@@ -1,0 +1,547 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>STRAND Research Search</title>
+<meta name="description" content="A standalone tool that builds research-search links across Europe PMC, PubMed, Google Scholar, Semantic Scholar, OpenAlex, Crossref, CORE, BASE and ScienceDirect.">
+<meta name="theme-color" content="#123f3a">
+<style>
+:root{
+  --bg:#f6f2e8;--ink:#1c2b29;--card:#fffdf8;--green:#123f3a;--teal:#0f665c;
+  --gold:#f2c75b;--line:#d8ddd9;--muted:#566160;--soft:#e9f3f0;--white:#fff;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
+button,input,select{font:inherit}
+:focus-visible{outline:3px solid var(--teal);outline-offset:3px;border-radius:6px}
+.hero{background:linear-gradient(145deg,#123f3a,#0f665c);color:#fff;padding:28px 16px 24px}
+.wrap{max-width:900px;margin:auto}
+.brand{font-weight:900;letter-spacing:.05em;font-size:1.65rem;margin:0}
+.tagline{margin-top:4px;opacity:.95;font-size:1rem}
+.modebar{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:20px;background:#ffffff18;border:1px solid #ffffff38;border-radius:14px;padding:5px}
+.modebtn{border:0;border-radius:10px;padding:12px 10px;min-height:44px;background:transparent;color:#fff;font-weight:800;cursor:pointer}
+.modebtn.active{background:#fff;color:var(--green)}
+.modebtn:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
+.panel{margin-top:16px}
+.hidden{display:none!important}
+.searchrow{display:flex;gap:10px}
+.searchrow input{flex:1;min-width:0;border:0;border-radius:14px;padding:16px;min-height:44px;font-size:1.03rem;box-shadow:0 2px 12px #0002;color:var(--ink)}
+.primarybtn{border:0;border-radius:14px;background:var(--gold);color:#2b281d;font-weight:900;padding:0 20px;min-height:44px;cursor:pointer}
+.primarybtn:focus-visible{outline:3px solid #fff;outline-offset:2px}
+.examples{display:flex;gap:8px;flex-wrap:wrap;margin-top:11px}
+.chip{border:1px solid #ffffff66;background:#ffffff18;color:#fff;border-radius:999px;padding:7px 12px;min-height:44px;display:inline-flex;align-items:center;cursor:pointer;text-align:left}
+.advancedbox{background:#ffffff12;border:1px solid #ffffff35;border-radius:16px;padding:14px}
+.advhint{margin:0 0 12px;color:#eaf5f2;font-size:.86rem;line-height:1.45}
+.advancedgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.field label{display:block;font-size:.82rem;font-weight:800;margin:0 0 5px;color:#f4fbf9}
+.field input,.field select{width:100%;border:0;border-radius:11px;padding:12px;min-height:44px;background:#fff;color:var(--ink)}
+.field.full{grid-column:1/-1}
+.actions{display:flex;gap:10px;margin-top:12px}
+.actions .primarybtn{padding:13px 18px;flex:1}
+.secondarybtn{border:1px solid #ffffff66;border-radius:14px;background:#ffffff12;color:#fff;font-weight:800;padding:13px 16px;min-height:44px;cursor:pointer}
+.secondarybtn:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
+
+.inline-status{
+  min-height:1.25em;
+  margin:8px 2px 0;
+  font-size:.88rem;
+  font-weight:700;
+  color:#fff4c2;
+}
+.inline-status:empty{min-height:0;margin-top:0}
+.card.same-search{background:#f4f7f6}
+.card.same-search .tag{background:#eef2f1;color:var(--muted);border-color:#d5dcda}
+
+.main{padding:20px 14px 20px}
+.intro{background:#fff8df;border:1px solid #ead79a;border-radius:14px;padding:14px;line-height:1.5}
+.intro strong{color:#5a4813}
+.status{min-height:1.2em;margin:14px 0 0;font-size:.92rem;font-weight:700;color:var(--green)}
+.status.error{color:#8a2f2a}
+.results{display:none;margin-top:12px}.results.show{display:block}
+.querybox{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;margin-bottom:6px}
+.querybox b{display:block;font-size:.78rem;color:var(--muted);text-transform:uppercase;letter-spacing:.07em}
+.query{font-size:1.12rem;font-weight:850;margin-top:5px;word-break:break-word}
+.filters{margin-top:8px;color:var(--muted);font-size:.9rem}
+.src-group{margin-top:16px}
+.group-h{font-size:1rem;margin:0 0 9px;color:var(--green);border-bottom:1px solid var(--line);padding-bottom:5px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.card{position:relative;display:block;text-decoration:none;color:inherit;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px 16px 14px;min-height:120px;box-shadow:0 2px 8px #0000000a}
+.card:hover{outline:3px solid #b8d8d1;outline-offset:1px}
+.card:focus-visible{outline:3px solid var(--teal);outline-offset:3px}
+.card.primary{border:2px solid var(--teal)}
+.icon{font-size:1.55rem}.card h3{font-size:1.02rem;margin:6px 0 4px}.card p{margin:0;color:var(--muted);font-size:.88rem;line-height:1.4}
+.tag{display:inline-block;margin-top:10px;font-size:.7rem;font-weight:800;letter-spacing:.04em;padding:3px 9px;border-radius:999px}
+.tag-free{background:var(--soft);color:var(--green);border:1px solid #cfe1dc}
+.tag-login{background:#fdeede;color:#7a4a12;border:1px solid #e6c78f}
+.more-btn{display:block;width:100%;margin:16px 0 2px;min-height:44px;border:1px solid #cfe1dc;border-radius:14px;background:var(--soft);color:var(--green);font-weight:800;font-size:.95rem;cursor:pointer;padding:12px}
+.more-btn:hover{background:#dcece7}
+.more-btn:focus-visible{outline:3px solid var(--teal);outline-offset:2px}
+.more-btn::after{content:" \25BE";font-size:.8em}
+.more-btn[aria-expanded="true"]::after{content:" \25B4"}
+#moreSources[hidden]{display:none}
+.warn{margin-top:18px;background:#fff8df;border:1px solid #ead79a;border-radius:14px;padding:13px 14px;font-size:.9rem;line-height:1.5}
+.warn strong{color:#5a4813}
+.tip{margin-top:12px;background:var(--soft);border:1px solid #cfe1dc;border-radius:14px;padding:13px;font-size:.9rem;line-height:1.45}
+.note{margin-top:10px;color:var(--muted);font-size:.86rem;line-height:1.45}
+.return-banner{position:fixed;left:50%;bottom:calc(14px + env(safe-area-inset-bottom));transform:translateX(-50%);width:min(92vw,720px);z-index:1000;background:#123f3a;color:#fff;border:1px solid #ffffff55;border-radius:14px;box-shadow:0 8px 28px #0004;padding:13px 14px}
+.return-banner[hidden]{display:none}
+.return-banner-inner{display:flex;gap:12px;align-items:center;justify-content:space-between}
+.return-banner p{margin:0;line-height:1.45;font-size:.92rem}
+.return-dismiss{flex:0 0 auto;border:0;border-radius:10px;background:var(--gold);color:#2b281d;font-weight:900;min-height:44px;padding:8px 14px;cursor:pointer}
+footer{border-top:1px solid var(--line);color:var(--muted);font-size:.82rem;text-align:center;padding:18px 14px 40px;line-height:1.5}
+.noscript{background:#fff3f2;border:1px solid #e0a9a4;color:#7a2c26;border-radius:12px;padding:14px;margin:16px 0}
+@media(max-width:640px){
+  .searchrow{flex-direction:column}.searchrow .primarybtn{padding:14px}
+  .grid{grid-template-columns:1fr}.card{min-height:0}
+  .advancedgrid{grid-template-columns:1fr}.field.full{grid-column:auto}
+  .actions{flex-direction:column}.secondarybtn{width:100%}
+  .return-banner-inner{align-items:stretch;flex-direction:column}.return-dismiss{width:100%}
+}
+@media(prefers-reduced-motion:reduce){
+  html{scroll-behavior:auto}
+  *{animation-duration:.001ms!important;transition-duration:.001ms!important}
+}
+</style>
+</head>
+<body>
+<section class="hero">
+  <div class="wrap">
+    <h1 class="brand">STRAND</h1>
+    <div class="tagline">Research Search</div>
+
+    <div class="modebar" role="group" aria-label="Search type">
+      <button id="simpleMode" class="modebtn active" type="button" aria-pressed="true">Simple Search</button>
+      <button id="advancedMode" class="modebtn" type="button" aria-pressed="false">Advanced Search</button>
+    </div>
+
+    <div id="simplePanel" class="panel">
+      <div class="searchrow">
+        <input id="simpleQ" placeholder="Example: Azadirachta indica antimicrobial activity" aria-label="Research keyword">
+        <button id="simpleGo" class="primarybtn" type="button">Search</button>
+      </div>
+      <p id="simpleInlineStatus" class="inline-status" role="status" aria-live="polite"></p>
+      <div class="examples" aria-label="Examples">
+        <button class="chip simpleExample" type="button">Azadirachta indica antimicrobial activity</button>
+        <button class="chip simpleExample" type="button">Moringa oleifera antioxidant activity</button>
+        <button class="chip simpleExample" type="button">Ocimum sanctum antibacterial activity</button>
+      </div>
+    </div>
+
+    <div id="advancedPanel" class="panel hidden" aria-hidden="true">
+      <div class="advancedbox">
+        <p class="advhint">Use separate fields to narrow your search. STRAND combines them into a focused keyword search.</p>
+        <div class="advancedgrid">
+          <div class="field">
+            <label for="subject">Plant / organism / main subject</label>
+            <input id="subject" placeholder="Example: Azadirachta indica">
+          </div>
+          <div class="field">
+            <label for="activity">Activity / research topic</label>
+            <input id="activity" placeholder="Example: antimicrobial activity">
+          </div>
+          <div class="field">
+            <label for="extra">Extra keyword</label>
+            <input id="extra" placeholder="Example: leaf extract">
+          </div>
+          <div class="field">
+            <label for="region">Region or country keyword (optional)</label>
+            <input id="region" placeholder="Example: India">
+          </div>
+          <div class="field">
+            <label for="fromYear">From year</label>
+            <input id="fromYear" inputmode="numeric" pattern="[0-9]*" placeholder="Example: 2015">
+          </div>
+          <div class="field">
+            <label for="toYear">To year</label>
+            <input id="toYear" inputmode="numeric" pattern="[0-9]*" placeholder="Example: 2026">
+          </div>
+        </div>
+        <p id="advancedInlineStatus" class="inline-status" role="status" aria-live="polite"></p>
+        <div class="actions">
+          <button id="advancedGo" class="primarybtn" type="button">Search Research</button>
+          <button id="clearAdvanced" class="secondarybtn" type="button">Clear</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<main class="main wrap">
+  <noscript>
+    <p class="noscript">This tool builds its search links with JavaScript. Please enable
+      JavaScript, or open the research websites directly, for example europepmc.org,
+      pubmed.ncbi.nlm.nih.gov or scholar.google.com.</p>
+  </noscript>
+
+  <div class="intro">
+    <strong>Simple Search:</strong> type the topic in one line.<br>
+    <strong>Advanced Search:</strong> use separate boxes when you want to narrow the search by plant, activity, region or year.
+  </div>
+
+  <p id="status" class="status" role="status" aria-live="polite"></p>
+
+  <section id="results" class="results">
+    <div class="querybox">
+      <b>Your search</b>
+      <div id="shown" class="query"></div>
+      <div id="shownFilters" class="filters"></div>
+    </div>
+
+    <div id="sourceGroups"></div>
+
+    <div class="warn">
+      <strong>Important:</strong> No single database contains every published paper. Search more
+      than one source before concluding that research is absent. Not finding a paper in these
+      searches does not mean that no research exists.
+    </div>
+
+    <div class="note">Different research websites interpret keywords differently, so the same search may produce different results on each site.</div>
+    <div class="note">The same paper may appear in more than one database. Count the paper once, not once per website.</div>
+
+    <div class="tip">For life-science topics, start with <b>Europe PMC</b> and <b>PubMed</b>. Then widen your search using <b>Google Scholar</b>, <b>Semantic Scholar</b> and <b>OpenAlex</b>. Use Simple Search first; switch to Advanced Search only when you get too many results.</div>
+
+    <div class="note">The region keyword is included in all main database searches. The separate India keyword search uses the base topic with “India” instead. Year limits are added automatically to Europe PMC, PubMed and Google Scholar. On other sites, apply the site's own year filters where available.</div>
+    <div class="note">A region or country keyword only searches for that word in searchable records. It does not verify where the research was actually conducted.</div>
+    <div class="note">Each site controls its own search page, so exact link behaviour (especially year filters) may change over time. An internet connection is needed when you open a result, and some publisher sites may need a subscription or institutional login for full text.</div>
+  </section>
+</main>
+
+<div id="returnBanner" class="return-banner" role="region" aria-label="Return to STRAND message" hidden>
+  <div class="return-banner-inner">
+    <p id="returnMessage" role="status" aria-live="polite"><strong>Welcome back to STRAND.</strong> Continue searching, or close this file if you have finished.</p>
+    <button id="returnDismiss" class="return-dismiss" type="button">Got it</button>
+  </div>
+</div>
+
+<footer>
+  STRAND · Research Search<br>
+  Department of Zoology, Government Arts and Science College, Nagercoil · R. Ramesh
+</footer>
+
+<script>
+(function(){
+  "use strict";
+  const $=id=>document.getElementById(id);
+  const enc=encodeURIComponent;
+  const simpleMode=$('simpleMode'), advancedMode=$('advancedMode');
+  const simplePanel=$('simplePanel'), advancedPanel=$('advancedPanel');
+  const results=$('results'), shown=$('shown'), shownFilters=$('shownFilters');
+  const statusEl=$('status'), returnBanner=$('returnBanner'), returnDismiss=$('returnDismiss');
+  const simpleInlineStatus=$('simpleInlineStatus'), advancedInlineStatus=$('advancedInlineStatus');
+
+  const CURRENT_YEAR=new Date().getFullYear();
+  const MIN_YEAR=1800;
+  const MAX_LEN=400;
+  const INDIA_DESC_DEFAULT='Search this topic in Google Scholar with the word \u201CIndia\u201D added. This does not prove that the research was conducted in India.';
+  const INDIA_DESC_DUP='India is already included in your main Google Scholar search.';
+  const prefersReduced=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* ---- Source registry ----
+     Year limits are only applied for sources that support them from a link:
+     Europe PMC (FIRST_PDATE), PubMed ([dp]), Google Scholar (as_ylo/as_yhi).
+     The region keyword is part of the topic term and therefore reaches every source. ---- */
+  function scholarUrl(t,f,to){
+    const p=new URLSearchParams({q:t});
+    if(f) p.set('as_ylo',String(f));
+    if(to) p.set('as_yhi',String(to));
+    return 'https://scholar.google.com/scholar?'+p.toString();
+  }
+  const SOURCES=[
+    { id:'epmc', icon:'\uD83D\uDD2C', name:'Europe PMC', access:'free', primary:true,
+      desc:'Life-science and biomedical literature, with full-text links where available.',
+      url:(t,f,to)=>{ let q=t; if(f||to){ const s=f||MIN_YEAR,e=to||CURRENT_YEAR; q+=' AND FIRST_PDATE:['+s+'-01-01 TO '+e+'-12-31]'; } return 'https://europepmc.org/search?query='+enc(q); } },
+    { id:'pubmed', icon:'\uD83D\uDCDA', name:'PubMed', access:'free',
+      desc:'Biomedical and life-science publications.',
+      url:(t,f,to)=>{ let q=t; if(f||to){ const s=f||MIN_YEAR,e=to||CURRENT_YEAR; q+=' AND '+s+'/01/01:'+e+'/12/31[dp]'; } return 'https://pubmed.ncbi.nlm.nih.gov/?term='+enc(q); } },
+    { id:'scholar', icon:'\uD83C\uDF93', name:'Google Scholar', access:'free',
+      desc:'Broad scholarly search across articles, theses and citations.',
+      url:(t,f,to)=>scholarUrl(t,f,to) },
+
+    { id:'semantic', icon:'\uD83E\uDDE0', name:'Semantic Scholar', access:'free',
+      desc:'Scholarly search with citation links and citation information.',
+      url:t=>'https://www.semanticscholar.org/search?q='+enc(t)+'&sort=relevance' },
+    { id:'openalex', icon:'\uD83D\uDDC2\uFE0F', name:'OpenAlex', access:'free',
+      desc:'Open catalogue of scholarly works, authors and citation information.',
+      url:t=>'https://openalex.org/works?filter='+enc('default.search:'+t) },
+    { id:'crossref', icon:'\uD83D\uDD17', name:'Crossref', access:'free',
+      desc:'Search publisher-deposited scholarly metadata and DOIs.',
+      url:t=>'https://search.crossref.org/?q='+enc(t)+'&from_ui=yes' },
+    { id:'core', icon:'\uD83D\uDCC2', name:'CORE', access:'free',
+      desc:'Open-access research aggregated from repositories and journals, with full text where available.',
+      url:t=>'https://core.ac.uk/search?q='+enc(t) },
+    { id:'base', icon:'\uD83D\uDDC3\uFE0F', name:'BASE', access:'free',
+      desc:'Large academic search index covering repositories and scholarly resources. Open-access availability varies.',
+      url:t=>'https://www.base-search.net/Search/Results?lookfor='+enc(t)+'&type=all' },
+    { id:'sciencedirect', icon:'\uD83D\uDCF0', name:'ScienceDirect', access:'login',
+      desc:'Elsevier journals and books. Full text may require subscription or institutional access.',
+      url:t=>'https://www.sciencedirect.com/search?qs='+enc(t) },
+
+    { id:'india', icon:'\uD83C\uDDEE\uD83C\uDDF3', name:'India keyword search', access:'free',
+      usesIndia:true, desc:INDIA_DESC_DEFAULT,
+      url:(t,f,to)=>scholarUrl(t,f,to) },
+  ];
+  const byId=id=>SOURCES.find(s=>s.id===id);
+
+  const RECOMMENDED=['epmc','pubmed','scholar'];
+  const MORE_GROUPS=[
+    { label:'Citation & scholarly search', ids:['semantic','openalex','crossref'] },
+    { label:'Open repositories & academic indexes', ids:['core','base'] },
+    { label:'Publisher database (may need a subscription or login)', ids:['sciencedirect'] },
+  ];
+
+  const TAG_TEXT={ free:'Free to search', login:'Full text may require access' };
+
+  function makeCard(s){
+    const a=document.createElement('a');
+    a.className='card'+(s.primary?' primary':'');
+    a.id='src-'+s.id; a.target='_blank'; a.rel='noopener noreferrer';
+    const icon=document.createElement('div'); icon.className='icon'; icon.setAttribute('aria-hidden','true'); icon.textContent=s.icon; a.appendChild(icon);
+    const t=document.createElement('h3'); t.textContent=s.name; a.appendChild(t);
+    const p=document.createElement('p'); p.id='desc-'+s.id; p.textContent=s.desc; a.appendChild(p);
+    const tag=document.createElement('span'); tag.className='tag '+(s.access==='login'?'tag-login':'tag-free');
+    tag.textContent=TAG_TEXT[s.access]||'Free to search'; a.appendChild(tag);
+    a.addEventListener('click',onExternalClick);
+    return a;
+  }
+  function groupSection(label, ids){
+    const sec=document.createElement('section'); sec.className='src-group';
+    const h=document.createElement('h2'); h.className='group-h'; h.textContent=label; sec.appendChild(h);
+    const grid=document.createElement('div'); grid.className='grid';
+    ids.forEach(id=>{ const s=byId(id); if(s) grid.appendChild(makeCard(s)); });
+    sec.appendChild(grid); return sec;
+  }
+
+  /* ---- Two-tier disclosure: recommended visible; extras behind a button (point 11) ---- */
+  function renderCards(){
+    const c=$('sourceGroups');
+    c.appendChild(groupSection('Recommended sources', RECOMMENDED));
+
+    const toggle=document.createElement('button');
+    toggle.type='button'; toggle.id='moreToggle'; toggle.className='more-btn';
+    toggle.setAttribute('aria-expanded','false'); toggle.setAttribute('aria-controls','moreSources');
+    toggle.textContent='More research sources';
+    c.appendChild(toggle);
+
+    const more=document.createElement('div'); more.id='moreSources'; more.hidden=true;
+    MORE_GROUPS.forEach(g=>more.appendChild(groupSection(g.label,g.ids)));
+    c.appendChild(more);
+
+    c.appendChild(groupSection('Regional keyword lens', ['india']));
+
+    toggle.addEventListener('click',()=>{
+      const willOpen=toggle.getAttribute('aria-expanded')!=='true';
+      toggle.setAttribute('aria-expanded',String(willOpen));
+      more.hidden=!willOpen;
+      toggle.textContent=willOpen?'Hide extra sources':'More research sources';
+    });
+  }
+
+  function setStatus(msg,isError){
+    statusEl.textContent=msg||'';
+    statusEl.classList.toggle('error',!!isError);
+  }
+  function clearInlineStatus(){
+    simpleInlineStatus.textContent='';
+    advancedInlineStatus.textContent='';
+  }
+  function setInlineStatus(mode,msg){
+    clearInlineStatus();
+    (mode==='simple'?simpleInlineStatus:advancedInlineStatus).textContent=msg||'';
+  }
+  function announceStatus(msg,isError){
+    // Force a distinct DOM change so repeated identical announcements are not silently coalesced.
+    setStatus('',isError);
+    window.requestAnimationFrame(()=>setStatus(msg,isError));
+  }
+
+  function resetResults(){
+    results.classList.remove('show');
+    SOURCES.forEach(s=>{
+      const a=$('src-'+s.id);
+      if(a){
+        a.removeAttribute('href');
+        a.classList.remove('same-search');
+        a.removeAttribute('aria-label');
+      }
+    });
+    shown.textContent=''; shownFilters.textContent='';
+    const d=$('desc-india'); if(d) d.textContent=INDIA_DESC_DEFAULT;
+    // Point 4: every fresh search starts with only the recommended sources visible.
+    const toggle=$('moreToggle'), more=$('moreSources');
+    if(toggle&&more){ toggle.setAttribute('aria-expanded','false'); toggle.textContent='More research sources'; more.hidden=true; }
+    // Point 6: once the user resumes searching, the return banner has served its purpose.
+    if(returnBanner) returnBanner.hidden=true;
+    clearInlineStatus();
+  }
+
+  function setMode(mode){
+    const simple=mode==='simple';
+    simplePanel.classList.toggle('hidden',!simple);
+    advancedPanel.classList.toggle('hidden',simple);
+    simplePanel.setAttribute('aria-hidden',String(!simple));
+    advancedPanel.setAttribute('aria-hidden',String(simple));
+    simpleMode.classList.toggle('active',simple);
+    advancedMode.classList.toggle('active',!simple);
+    simpleMode.setAttribute('aria-pressed',String(simple));
+    advancedMode.setAttribute('aria-pressed',String(!simple));
+    resetResults(); setStatus('');
+    (simple?$('simpleQ'):$('subject')).focus();
+  }
+  simpleMode.addEventListener('click',()=>setMode('simple'));
+  advancedMode.addEventListener('click',()=>setMode('advanced'));
+
+  /* ---- Helpers ---- */
+  // Plain normalisation only. No automatic quotation (point 7): quoting heuristics
+  // are unreliable across taxa and are interpreted differently by each database.
+  function subjectTerm(v){ return (v||'').trim().replace(/\s+/g,' '); }
+  function join(parts){ return parts.filter(Boolean).join(' ').replace(/\s+/g,' ').trim(); }
+
+  function readYear(raw){
+    const t=(raw||'').trim();
+    if(!t) return {state:'empty',value:null};
+    if(!/^\d{4}$/.test(t)) return {state:'bad',value:null};
+    const n=parseInt(t,10);
+    if(n<MIN_YEAR||n>CURRENT_YEAR) return {state:'bad',value:null};
+    return {state:'ok',value:n};
+  }
+  function yearLabel(f,to){
+    if(f&&to) return 'Years: '+f+' \u2013 '+to;
+    if(f&&!to) return 'Years: '+f+' \u2013 Present';
+    if(!f&&to) return 'Years: Up to '+to;
+    return '';
+  }
+  function hasIndiaWord(s){ return /(^|[^a-z])india([^a-z]|$)/i.test(s); }
+
+  /* ---- Build links + reveal ---- */
+  function buildAndShow(baseTopic, region, fromYear, toYear){
+    const topicTerm=join([baseTopic, region]);
+    // Add "India" only if the base topic does not already contain it (point 2).
+    const indiaTerm=hasIndiaWord(baseTopic)?baseTopic:join([baseTopic,'India']);
+
+    if(Math.max(topicTerm.length,indiaTerm.length)>MAX_LEN){
+      const mode=advancedPanel.classList.contains('hidden')?'simple':'advanced';
+      setInlineStatus(mode,'Please shorten the search topic.');
+      return;
+    }
+
+    SOURCES.forEach(s=>{
+      const a=$('src-'+s.id); if(!a) return;
+      const term=s.usesIndia?indiaTerm:topicTerm;
+      a.href=s.url(term, fromYear, toYear);
+    });
+
+    const d=$('desc-india');
+    const indiaCard=$('src-india');
+    const indiaAlreadyInMain=hasIndiaWord(topicTerm);
+    if(d) d.textContent=indiaAlreadyInMain?INDIA_DESC_DUP:INDIA_DESC_DEFAULT;
+    if(indiaCard){
+      indiaCard.classList.toggle('same-search',indiaAlreadyInMain);
+      if(indiaAlreadyInMain){
+        indiaCard.setAttribute('aria-label','India keyword search. Same as the main Google Scholar search because India is already included.');
+      }else{
+        indiaCard.removeAttribute('aria-label');
+      }
+    }
+
+    shown.textContent=baseTopic||region||'';
+    const bits=[];
+    if(region) bits.push('Region keyword: '+region);
+    const yl=yearLabel(fromYear,toYear); if(yl) bits.push(yl);
+    shownFilters.textContent=bits.join('  \u2022  ');
+
+    results.classList.add('show');
+    const label=(baseTopic||region||'').trim();
+    const shortLabel=label.length>60?label.slice(0,57)+'\u2026':label;
+    announceStatus(shortLabel?('Search links ready for '+shortLabel+'.'):'Search links ready.',false);
+    results.scrollIntoView({behavior:prefersReduced?'auto':'smooth',block:'start'});
+  }
+
+  function runSimple(){
+    resetResults(); setStatus(''); clearInlineStatus();
+    const term=$('simpleQ').value.trim().replace(/\s+/g,' ');
+    if(!term){
+      const msg='Please enter a research topic.';
+      setInlineStatus('simple',msg);
+      $('simpleQ').focus();
+      return;
+    }
+    buildAndShow(term,'',null,null);
+  }
+
+  function runAdvanced(){
+    resetResults(); setStatus(''); clearInlineStatus();
+    const subject=subjectTerm($('subject').value);
+    const activity=$('activity').value.trim();
+    const extra=$('extra').value.trim();
+    const region=$('region').value.trim().replace(/\s+/g,' ');
+    const baseTopic=join([subject,activity,extra]);
+
+    if(!baseTopic){
+      setInlineStatus('advanced','Please enter a plant, organism, activity, or research topic.');
+      $('subject').focus();
+      return;
+    }
+
+    const fy=readYear($('fromYear').value);
+    if(fy.state==='bad'){
+      setInlineStatus('advanced','Please enter a valid four-digit From year.');
+      $('fromYear').focus();
+      return;
+    }
+    const ty=readYear($('toYear').value);
+    if(ty.state==='bad'){
+      setInlineStatus('advanced','Please enter a valid four-digit To year.');
+      $('toYear').focus();
+      return;
+    }
+    if(fy.value&&ty.value&&fy.value>ty.value){
+      setInlineStatus('advanced','The \u201CFrom year\u201D must be earlier than or equal to the \u201CTo year\u201D.');
+      $('fromYear').focus();
+      return;
+    }
+    buildAndShow(baseTopic,region,fy.value,ty.value);
+  }
+
+  /* ---- Return-to-STRAND banner (best-effort) ---- */
+  let externalVisitPending=false, externalVisitWasHidden=false;
+  const RETURN_TEXT='Welcome back to STRAND. Continue searching, or close this file if you have finished.';
+  function onExternalClick(){ externalVisitPending=true; externalVisitWasHidden=false; returnBanner.hidden=true; }
+  function showReturnBanner(){
+    returnBanner.hidden=false;
+    const msg=$('returnMessage');
+    if(msg){
+      msg.textContent='';
+      window.requestAnimationFrame(()=>{ msg.textContent=RETURN_TEXT; });
+    }
+  }
+  document.addEventListener('visibilitychange',()=>{
+    if(document.hidden && externalVisitPending){ externalVisitWasHidden=true; return; }
+    if(!document.hidden && externalVisitPending && externalVisitWasHidden){
+      externalVisitPending=false; externalVisitWasHidden=false; showReturnBanner();
+    }
+  });
+  returnDismiss.addEventListener('click',()=>{ returnBanner.hidden=true; });
+
+  /* ---- Init + wiring ---- */
+  renderCards();
+
+  $('simpleGo').addEventListener('click',runSimple);
+  $('simpleQ').addEventListener('keydown',e=>{if(e.key==='Enter')runSimple();});
+  document.querySelectorAll('.simpleExample').forEach(btn=>btn.addEventListener('click',()=>{
+    $('simpleQ').value=btn.textContent.trim();runSimple();
+  }));
+
+  $('advancedGo').addEventListener('click',runAdvanced);
+  ['subject','activity','extra','region','fromYear','toYear'].forEach(id=>
+    $(id).addEventListener('keydown',e=>{if(e.key==='Enter')runAdvanced();}));
+
+  $('clearAdvanced').addEventListener('click',()=>{
+    ['subject','activity','extra','region','fromYear','toYear'].forEach(id=>$(id).value='');
+    resetResults(); setStatus(''); clearInlineStatus(); $('subject').focus();
+  });
+})();
+</script>
+</body>
+</html>
