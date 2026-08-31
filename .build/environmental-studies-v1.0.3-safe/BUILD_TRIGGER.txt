@@ -1,0 +1,2 @@
+Environmental Studies v1.0.3 SHA-verified build trigger.
+Source archive SHA-256: d2805de2b6f0eabfe247f3304250272f879cfec12dcf144734dc2f119210f2f8
