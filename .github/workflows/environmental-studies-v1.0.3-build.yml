@@ -22,23 +22,27 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Reconstruct audited source archive
+      - name: Verify source chunks and reconstruct archive
         shell: bash
         run: |
           set -euo pipefail
-          test "$(find .build/environmental-studies-v1.0.3-safe -maxdepth 1 -name 'chunk*.b64' | wc -l)" -eq 9
-          cat .build/environmental-studies-v1.0.3-safe/chunk00.b64 \
-              .build/environmental-studies-v1.0.3-safe/chunk01.b64 \
-              .build/environmental-studies-v1.0.3-safe/chunk02.b64 \
-              .build/environmental-studies-v1.0.3-safe/chunk03.b64 \
-              .build/environmental-studies-v1.0.3-safe/chunk04.b64 \
-              .build/environmental-studies-v1.0.3-safe/chunk05.b64 \
-              .build/environmental-studies-v1.0.3-safe/chunk06.b64 \
-              .build/environmental-studies-v1.0.3-safe/chunk07.b64 \
-              .build/environmental-studies-v1.0.3-safe/chunk08.b64 \
-              > /tmp/environmental-studies-v1.0.3.b64
+          cd .build/environmental-studies-v1.0.3-safe
+          cat > /tmp/chunk-sha256.txt <<'EOF'
+          fad0d660aff1abf889e42f125a7ae2d4749886f16b225abc7e04132a8ee6efb8  chunk00.b64
+          8ea3cf466287d708cb8a9fb32c8ce5a8d2c163efd7e003327790cf80621c5b7e  chunk01.b64
+          a8b23782c70ee95dad01b8af5e5083ee854293d72e8471f080f716e0922da0f6  chunk02.b64
+          efa45e03da2b1e10d32fe12aa03ff5f2b4f5d9bdcc40225e8c04b0babc7be5b5  chunk03.b64
+          3f3edf78f492f15530fb04a3905de7908ac60b5d75c4d582f40f2cf82414f3a2  chunk04.b64
+          872af8f7a95f8a0360c09e94c2a5d6498015921e05963bca4fd85258533aed72  chunk05.b64
+          a68306c8f86b6563f42bb14a7dc0e1c17d88824752121c4cc7bd57c93018a8b9  chunk06.b64
+          627d2acb17f96d8d8c742c360ddbb989d8b3f62f883c687fa9eb691c82ad7e6f  chunk07.b64
+          cc0f325d2e683a9fb8ec5aac6217fbf054c678a913034d018ba3d1ee6f0a5a74  chunk08.b64
+          EOF
+          sha256sum -c /tmp/chunk-sha256.txt
+          cat chunk00.b64 chunk01.b64 chunk02.b64 chunk03.b64 chunk04.b64 chunk05.b64 chunk06.b64 chunk07.b64 chunk08.b64 > /tmp/environmental-studies-v1.0.3.b64
           base64 --decode /tmp/environmental-studies-v1.0.3.b64 > /tmp/Environmental-Studies-Android-Source-v1.0.3.zip
           echo "d2805de2b6f0eabfe247f3304250272f879cfec12dcf144734dc2f119210f2f8  /tmp/Environmental-Studies-Android-Source-v1.0.3.zip" | sha256sum -c -
+          rm -rf /tmp/environmental-studies-build
           unzip -q /tmp/Environmental-Studies-Android-Source-v1.0.3.zip -d /tmp/environmental-studies-build
           test -f /tmp/environmental-studies-build/Environmental-Sciences-Android/app/build.gradle
 
