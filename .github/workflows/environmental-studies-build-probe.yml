@@ -15,7 +15,7 @@ jobs:
       - name: Extract project
         run: |
           mkdir -p /tmp/es
-          unzip ".build/Environmental-Studies-Android-Source-v1.0.6-QA-Fit-Viewport-Pagination.zip" -d /tmp/es
+          unzip ".build/Environmental-Studies-Android-Source-v1.0.6-QA-Fit-Viewport-Pagination-CORRECTED.zip" -d /tmp/es
 
       - uses: actions/setup-java@v4
         with:
