@@ -11,7 +11,7 @@ jobs:
       - name: Extract project
         run: |
           mkdir -p /tmp/es
-          unzip .build/environmental-studies-v1.0.3-source.zip -d /tmp/es
+          unzip ".build/Environmental-Studies-Android-Source-v1.0.3 (1).zip" -d /tmp/es
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
