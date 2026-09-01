@@ -15,7 +15,7 @@ jobs:
       - name: Extract project
         run: |
           mkdir -p /tmp/es
-          unzip ".build/Environmental-Studies-Android-Source-v1.0.7-Release-Candidate-Cleanup.zip" -d /tmp/es
+          unzip ".build/Environmental-Studies-Android-Source-v1.0.8-WebView-Renderer-Recovery.zip" -d /tmp/es
 
       - uses: actions/setup-java@v4
         with:
@@ -35,9 +35,10 @@ jobs:
         working-directory: /tmp/es/Environmental-Sciences-Android
         run: gradle --no-daemon clean lint test assembleDebug bundleRelease
 
-      - uses: actions/upload-artifact@v4
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
         with:
-          name: environmental-studies-v1.0.7-build
+          name: environmental-studies-v1.0.8-build
           path: |
             /tmp/es/Environmental-Sciences-Android/app/build/outputs/apk/debug/app-debug.apk
             /tmp/es/Environmental-Sciences-Android/app/build/outputs/bundle/release/app-release.aab
