@@ -13,9 +13,10 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Extract project
-  run: |
-    mkdir -p /tmp/es
-    unzip ".build/Environmental-Studies-Android-Source-v1.0.7-Release-Candidate-Cleanup.zip" -d /tmp/es
+        run: |
+          mkdir -p /tmp/es
+          unzip ".build/Environmental-Studies-Android-Source-v1.0.7-Release-Candidate-Cleanup.zip" -d /tmp/es
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -30,7 +31,7 @@ jobs:
         with:
           gradle-version: '8.11.1'
 
-            - name: Build
+      - name: Build
         working-directory: /tmp/es/Environmental-Sciences-Android
         run: gradle --no-daemon clean lint test assembleDebug bundleRelease
 
