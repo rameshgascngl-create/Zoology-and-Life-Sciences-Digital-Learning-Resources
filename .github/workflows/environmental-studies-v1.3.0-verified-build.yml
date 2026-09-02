@@ -1,0 +1,87 @@
+name: Environmental Studies v1.3.0 Verified Build
+
+on:
+  push:
+    branches:
+      - environmental-studies-v1.3.0-verified-build
+    paths:
+      - '.build/environmental-studies-v1.3.0/**'
+      - '.github/workflows/environmental-studies-v1.3.0-verified-build.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Verify base source archive
+        run: |
+          test -f Environmental-Studies-Android-v1.2.5-Mobile-Reader-Fixed.zip
+          echo '2e8da19d768b116362493e1cd47c19fd951d4a9d4d64755f12ff4261f073ce9f  Environmental-Studies-Android-v1.2.5-Mobile-Reader-Fixed.zip' | sha256sum -c -
+      - name: Extract project
+        run: |
+          rm -rf build-source && mkdir build-source
+          unzip -q Environmental-Studies-Android-v1.2.5-Mobile-Reader-Fixed.zip -d build-source
+      - name: Apply v1.2.8 native controls
+        working-directory: build-source/Environmental-Sciences-Android
+        run: python ../../.build/environmental-studies-v1.2.8/apply_v128.py
+      - name: Apply v1.2.9 native scroll
+        run: python .build/environmental-studies-v1.2.9/apply_v129.py build-source/Environmental-Sciences-Android
+      - name: Apply v1.2.9 compile correction
+        run: python .build/environmental-studies-v1.2.9/fix_compile.py build-source/Environmental-Sciences-Android
+      - name: Apply v1.3.0 academic and reader reconstruction
+        run: python .build/environmental-studies-v1.3.0/apply_v130.py build-source/Environmental-Sciences-Android
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+      - name: Install Android API 36
+        run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'platform-tools'
+      - name: Set up Gradle 8.11.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+      - name: Install verifier dependencies
+        working-directory: build-source/Environmental-Sciences-Android
+        run: python -m pip install --disable-pip-version-check -r tools/requirements.txt
+      - name: Run v1.3.0-aware verifier
+        run: python .build/environmental-studies-v1.3.0/verify_v130.py build-source/Environmental-Sciences-Android
+      - name: JavaScript syntax audit
+        working-directory: build-source/Environmental-Sciences-Android
+        run: |
+          python - <<'PY'
+          from bs4 import BeautifulSoup
+          from pathlib import Path
+          import subprocess,tempfile
+          s=BeautifulSoup(Path('app/src/main/assets/index.html').read_text(encoding='utf-8'),'html.parser')
+          scripts=[x.string or '' for x in s.find_all('script') if not x.get('src')]
+          for i,code in enumerate(scripts):
+              p=Path(tempfile.gettempdir())/f'es130_{i}.js';p.write_text(code,encoding='utf-8')
+              subprocess.run(['node','--check',str(p)],check=True)
+          print(f'JS PASS: {len(scripts)}/{len(scripts)}')
+          PY
+      - name: Build test and lint
+        working-directory: build-source/Environmental-Sciences-Android
+        run: gradle --no-daemon clean lint test assembleDebug bundleRelease
+      - name: Verify outputs
+        working-directory: build-source/Environmental-Sciences-Android
+        run: |
+          test -s app/build/outputs/apk/debug/app-debug.apk
+          test -s app/build/outputs/bundle/release/app-release.aab
+          sha256sum app/build/outputs/apk/debug/app-debug.apk app/build/outputs/bundle/release/app-release.aab
+      - name: Upload v1.3.0 build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: environmental-studies-v1.3.0-verified-build
+          retention-days: 30
+          if-no-files-found: error
+          path: |
+            build-source/Environmental-Sciences-Android/app/build/outputs/apk/debug/app-debug.apk
+            build-source/Environmental-Sciences-Android/app/build/outputs/bundle/release/app-release.aab
+            build-source/Environmental-Sciences-Android/app/build/reports/lint-results-debug.html
