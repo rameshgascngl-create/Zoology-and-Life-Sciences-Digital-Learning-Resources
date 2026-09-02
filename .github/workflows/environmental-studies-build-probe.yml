@@ -1,4 +1,4 @@
-   name: Environmental Studies Android Build Probe
+name: Environmental Studies Android Build Probe
 
 on:
   push:
@@ -11,140 +11,65 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # ------------------------------------------------------------
-      # 1. CHECK OUT REPOSITORY
-      # ------------------------------------------------------------
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      # ------------------------------------------------------------
-      # 2. EXTRACT ENVIRONMENTAL STUDIES v1.0.9 SOURCE
-      # ------------------------------------------------------------
-      - name: Extract Environmental Studies v1.0.9
+      - name: Extract source
         run: |
+          set -e
+          ZIP_FILE=$(find .build -maxdepth 1 -type f -name 'Environmental-Studies-Android-Source-v1.0.9-Scroll-Reliability-Hotfix*.zip' | head -n 1)
+          test -n "$ZIP_FILE"
+          echo "Using: $ZIP_FILE"
           rm -rf /tmp/es
           mkdir -p /tmp/es
+          unzip "$ZIP_FILE" -d /tmp/es
+          find /tmp/es -name "settings.gradle*" -print
 
-          unzip ".build/Environmental-Studies-Android-Source-v1.0.9-Scroll-Reliability-Hotfix (1).zip" -d /tmp/es
-
-          echo "=========================================="
-          echo "Extracted project structure"
-          echo "=========================================="
-
-          find /tmp/es -maxdepth 4 -type f \( -name "settings.gradle" -o -name "settings.gradle.kts" \) -print
-
-      # ------------------------------------------------------------
-      # 3. JAVA 17
-      # ------------------------------------------------------------
-      - name: Set up Java 17
+      - name: Set up Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      # ------------------------------------------------------------
-      # 4. ANDROID SDK
-      # ------------------------------------------------------------
-      - name: Set up Android SDK
+      - name: Set up Android
         uses: android-actions/setup-android@v3
 
-      - name: Install Android API 36
-        run: |
-          sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools"
+      - name: Install Android SDK
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools"
 
-      # ------------------------------------------------------------
-      # 5. GRADLE 8.11.1
-      # ------------------------------------------------------------
-      - name: Set up Gradle 8.11.1
+      - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.11.1'
 
-      # ------------------------------------------------------------
-      # 6. LOCATE PROJECT AUTOMATICALLY AND BUILD
-      # ------------------------------------------------------------
-      - name: Build Environmental Studies v1.0.9
-        shell: bash
+      - name: Build
         run: |
           set -e
-
-          SETTINGS_FILE="$(find /tmp/es -type f \( -name "settings.gradle" -o -name "settings.gradle.kts" \) | head -n 1)"
-
-          if [ -z "$SETTINGS_FILE" ]; then
-            echo "ERROR: Android Gradle project not found."
-            echo "Contents of extracted ZIP:"
-            find /tmp/es -maxdepth 5 -print
-            exit 1
-          fi
-
-          PROJECT_DIR="$(dirname "$SETTINGS_FILE")"
-
-          echo "=========================================="
-          echo "Android project detected"
-          echo "=========================================="
-          echo "$PROJECT_DIR"
-
+          SETTINGS_FILE=$(find /tmp/es -type f -name "settings.gradle" | head -n 1)
+          test -n "$SETTINGS_FILE"
+          PROJECT_DIR=$(dirname "$SETTINGS_FILE")
+          echo "Project: $PROJECT_DIR"
           cd "$PROJECT_DIR"
-
-          echo "=========================================="
-          echo "Running Gradle build"
-          echo "=========================================="
-
           gradle --no-daemon clean lint test assembleDebug bundleRelease
 
-      # ------------------------------------------------------------
-      # 7. COLLECT APK, AAB AND LINT REPORT
-      # ------------------------------------------------------------
-      - name: Collect build outputs
-        shell: bash
+      - name: Collect outputs
         run: |
           set -e
+          mkdir -p /tmp/output
+          APK=$(find /tmp/es -type f -name "app-debug.apk" | head -n 1)
+          AAB=$(find /tmp/es -type f -name "app-release.aab" | head -n 1)
+          LINT=$(find /tmp/es -type f -name "lint-results-debug.html" | head -n 1)
+          test -n "$APK"
+          test -n "$AAB"
+          test -n "$LINT"
+          cp "$APK" /tmp/output/Environmental-Studies-v1.0.9-debug.apk
+          cp "$AAB" /tmp/output/Environmental-Studies-v1.0.9-release.aab
+          cp "$LINT" /tmp/output/lint-results-debug.html
+          sha256sum /tmp/output/Environmental-Studies-v1.0.9-debug.apk
+          sha256sum /tmp/output/Environmental-Studies-v1.0.9-release.aab
 
-          rm -rf /tmp/es-output
-          mkdir -p /tmp/es-output
-
-          APK="$(find /tmp/es -type f -path "*/outputs/apk/debug/app-debug.apk" | head -n 1)"
-          AAB="$(find /tmp/es -type f -path "*/outputs/bundle/release/app-release.aab" | head -n 1)"
-          LINT="$(find /tmp/es -type f -name "lint-results-debug.html" | head -n 1)"
-
-          if [ -z "$APK" ]; then
-            echo "ERROR: app-debug.apk was not generated."
-            exit 1
-          fi
-
-          if [ -z "$AAB" ]; then
-            echo "ERROR: app-release.aab was not generated."
-            exit 1
-          fi
-
-          if [ -z "$LINT" ]; then
-            echo "ERROR: lint-results-debug.html was not generated."
-            exit 1
-          fi
-
-          cp "$APK" /tmp/es-output/Environmental-Studies-v1.0.9-debug.apk
-          cp "$AAB" /tmp/es-output/Environmental-Studies-v1.0.9-release.aab
-          cp "$LINT" /tmp/es-output/lint-results-debug.html
-
-          echo "=========================================="
-          echo "BUILD OUTPUTS"
-          echo "=========================================="
-
-          ls -lh /tmp/es-output
-
-          echo "=========================================="
-          echo "SHA-256"
-          echo "=========================================="
-
-          sha256sum /tmp/es-output/Environmental-Studies-v1.0.9-debug.apk
-          sha256sum /tmp/es-output/Environmental-Studies-v1.0.9-release.aab
-
-      # ------------------------------------------------------------
-      # 8. UPLOAD ARTIFACT
-      # ------------------------------------------------------------
-      - name: Upload Environmental Studies v1.0.9 build
+      - name: Upload build
         uses: actions/upload-artifact@v4
         with:
           name: environmental-studies-v1.0.9-build
-          path: /tmp/es-output/
-          if-no-files-found: error
+          path: /tmp/output/
