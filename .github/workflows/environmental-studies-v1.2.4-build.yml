@@ -1,0 +1,74 @@
+name: Environmental Studies v1.2.4 Build
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ environmental-studies-v1.2.4-build ]
+    paths:
+      - 'Environmental-Studies-Android-v1.2.4-CI-README-Corrected.zip'
+      - '.github/workflows/environmental-studies-v1.2.4-build.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Verify source archive
+        shell: bash
+        run: |
+          test -f Environmental-Studies-Android-v1.2.4-CI-README-Corrected.zip
+          echo 'e087cde5f43cf9d425de4855bb9e7fe8782ce2957e9e1e8321d993395b79c5c1  Environmental-Studies-Android-v1.2.4-CI-README-Corrected.zip' | sha256sum -c -
+
+      - name: Extract source
+        run: unzip -q Environmental-Studies-Android-v1.2.4-CI-README-Corrected.zip
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK 36
+        run: yes | sdkmanager --licenses >/dev/null && sdkmanager 'platforms;android-36' 'platform-tools'
+
+      - name: Set up Gradle 8.11.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+
+      - name: Install verifier dependencies
+        working-directory: Environmental-Sciences-Android
+        run: python -m pip install --disable-pip-version-check -r tools/requirements.txt
+
+      - name: Verify content revision and catalog
+        working-directory: Environmental-Sciences-Android
+        run: python tools/verify_content_integrity.py
+
+      - name: Lint, unit test and build
+        working-directory: Environmental-Sciences-Android
+        run: gradle --no-daemon clean lint test assembleDebug bundleRelease
+
+      - name: Verify build outputs
+        run: |
+          test -f Environmental-Sciences-Android/app/build/outputs/apk/debug/app-debug.apk
+          test -f Environmental-Sciences-Android/app/build/outputs/bundle/release/app-release.aab
+
+      - name: Read app version
+        id: app_version
+        working-directory: Environmental-Sciences-Android
+        shell: bash
+        run: |
+          VERSION=$(grep -oP "versionName\\s+'\\K[^']+" app/build.gradle)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Upload APK, AAB and lint report
+        uses: actions/upload-artifact@v4
+        with:
+          name: environmental-studies-v${{ steps.app_version.outputs.version }}-build
+          path: |
+            Environmental-Sciences-Android/app/build/outputs/apk/debug/app-debug.apk
+            Environmental-Sciences-Android/app/build/outputs/bundle/release/app-release.aab
+            Environmental-Sciences-Android/app/build/reports/lint-results-debug.html
+          if-no-files-found: error
