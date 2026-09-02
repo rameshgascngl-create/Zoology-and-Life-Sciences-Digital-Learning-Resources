@@ -1,0 +1,100 @@
+name: Environmental Studies v1.2.5 Build
+
+on:
+  push:
+    branches:
+      - environmental-studies-v1.2.5-build
+    paths:
+      - 'Environmental-Studies-Android-v1.2.5-Mobile-Reader-Fixed.zip'
+      - '.github/workflows/environmental-studies-v1.2.5-build.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Verify source archive
+        shell: bash
+        run: |
+          test -f Environmental-Studies-Android-v1.2.5-Mobile-Reader-Fixed.zip
+          echo '2e8da19d768b116362493e1cd47c19fd951d4a9d4d64755f12ff4261f073ce9f  Environmental-Studies-Android-v1.2.5-Mobile-Reader-Fixed.zip' | sha256sum -c -
+
+      - name: Extract Android project
+        shell: bash
+        run: |
+          rm -rf build-source
+          mkdir build-source
+          unzip -q Environmental-Studies-Android-v1.2.5-Mobile-Reader-Fixed.zip -d build-source
+          test -f build-source/Environmental-Sciences-Android/app/build.gradle
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android API 36
+        shell: bash
+        run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'platform-tools'
+
+      - name: Set up Gradle 8.11.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+
+      - name: Install verifier dependencies
+        working-directory: build-source/Environmental-Sciences-Android
+        run: python -m pip install --disable-pip-version-check -r tools/requirements.txt
+
+      - name: Verify content integrity
+        working-directory: build-source/Environmental-Sciences-Android
+        run: python tools/verify_content_integrity.py
+
+      - name: Verify mobile reader patch markers
+        working-directory: build-source/Environmental-Sciences-Android
+        shell: bash
+        run: |
+          grep -q 'v1.2.5 mobile reader / page-turn reliability' app/src/main/assets/index.html
+          grep -q 'mobilePageNext' app/src/main/assets/index.html
+          grep -q "showBookPage(bookIndex,'none')" app/src/main/assets/index.html
+          grep -q 'versionCode 10205' app/build.gradle
+          grep -q "versionName '1.2.5'" app/build.gradle
+
+      - name: Build and lint
+        working-directory: build-source/Environmental-Sciences-Android
+        run: gradle --no-daemon clean lint test assembleDebug bundleRelease
+
+      - name: Verify outputs
+        working-directory: build-source/Environmental-Sciences-Android
+        shell: bash
+        run: |
+          test -s app/build/outputs/apk/debug/app-debug.apk
+          test -s app/build/outputs/bundle/release/app-release.aab
+          sha256sum app/build/outputs/apk/debug/app-debug.apk app/build/outputs/bundle/release/app-release.aab
+
+      - name: Read app version
+        id: app_version
+        working-directory: build-source/Environmental-Sciences-Android
+        shell: bash
+        run: |
+          VERSION=$(grep -oP "versionName\s+'\K[^']+" app/build.gradle)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Upload Android build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: environmental-studies-v${{ steps.app_version.outputs.version }}-build
+          if-no-files-found: error
+          retention-days: 30
+          path: |
+            build-source/Environmental-Sciences-Android/app/build/outputs/apk/debug/app-debug.apk
+            build-source/Environmental-Sciences-Android/app/build/outputs/bundle/release/app-release.aab
+            build-source/Environmental-Sciences-Android/app/build/reports/lint-results-debug.html
