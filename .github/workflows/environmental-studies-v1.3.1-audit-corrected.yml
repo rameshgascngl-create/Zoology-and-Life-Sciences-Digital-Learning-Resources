@@ -6,6 +6,7 @@ on:
       - environmental-studies-v1.3.1-audit-corrected
     paths:
       - '.build/environmental-studies-v1.3.1/**'
+      - 'docs/environmental-studies/v1.3.0-final-source-audit.md'
       - '.github/workflows/environmental-studies-v1.3.1-audit-corrected.yml'
   workflow_dispatch:
 
@@ -40,6 +41,8 @@ jobs:
         run: python .build/environmental-studies-v1.3.1/apply_v131.py build-source/Environmental-Sciences-Android
       - name: Normalize v1.3.1 native controls
         run: python .build/environmental-studies-v1.3.1/fix_controls.py build-source/Environmental-Sciences-Android
+      - name: Include complete v1.3.0 final source audit
+        run: cp docs/environmental-studies/v1.3.0-final-source-audit.md build-source/Environmental-Sciences-Android/docs/audits/v1.3.0-final-source-audit.md
       - name: Verify paired bilingual DOM
         working-directory: build-source/Environmental-Sciences-Android
         run: |
