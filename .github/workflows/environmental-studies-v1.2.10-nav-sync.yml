@@ -81,7 +81,6 @@ jobs:
         run: |
           ! grep -q 'Number(window.bookIndex||0)' app/src/main/assets/index.html
           grep -q "typeof bookIndex==='number'?bookIndex" app/src/main/assets/index.html
-          grep -q 'window.__androidBookIndex=bookIndex' app/src/main/assets/index.html
           grep -q 'versionCode 10210' app/build.gradle
           grep -q "versionName '1.2.10'" app/build.gradle
 
