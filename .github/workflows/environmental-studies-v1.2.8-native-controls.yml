@@ -1,0 +1,97 @@
+name: Environmental Studies v1.2.8 Native Controls Build
+
+on:
+  push:
+    branches:
+      - environmental-studies-v1.2.8-native-controls
+    paths:
+      - '.build/environmental-studies-v1.2.8/**'
+      - '.github/workflows/environmental-studies-v1.2.8-native-controls.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Verify v1.2.5 source archive
+        shell: bash
+        run: |
+          test -f Environmental-Studies-Android-v1.2.5-Mobile-Reader-Fixed.zip
+          echo '2e8da19d768b116362493e1cd47c19fd951d4a9d4d64755f12ff4261f073ce9f  Environmental-Studies-Android-v1.2.5-Mobile-Reader-Fixed.zip' | sha256sum -c -
+
+      - name: Extract project
+        shell: bash
+        run: |
+          rm -rf build-source
+          mkdir build-source
+          unzip -q Environmental-Studies-Android-v1.2.5-Mobile-Reader-Fixed.zip -d build-source
+          test -f build-source/Environmental-Sciences-Android/app/build.gradle
+
+      - name: Apply v1.2.8 native controls correction
+        working-directory: build-source/Environmental-Sciences-Android
+        run: python ../../.build/environmental-studies-v1.2.8/apply_v128.py
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android API 36
+        run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'platform-tools'
+
+      - name: Set up Gradle 8.11.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+
+      - name: Install verifier dependencies
+        working-directory: build-source/Environmental-Sciences-Android
+        run: python -m pip install --disable-pip-version-check -r tools/requirements.txt
+
+      - name: Run project verifier
+        working-directory: build-source/Environmental-Sciences-Android
+        run: python tools/verify_content_integrity.py
+
+      - name: Verify native control architecture
+        working-directory: build-source/Environmental-Sciences-Android
+        shell: bash
+        run: |
+          grep -q 'Button tamil = makeButton("தமிழ்")' app/src/main/java/edu/gascnagercoil/environmentalsciences/MainActivity.java
+          grep -q 'contents.setOnClickListener' app/src/main/java/edu/gascnagercoil/environmentalsciences/MainActivity.java
+          grep -q 'webView.setNestedScrollingEnabled(true)' app/src/main/java/edu/gascnagercoil/environmentalsciences/MainActivity.java
+          grep -q 'setUseWideViewPort(false)' app/src/main/java/edu/gascnagercoil/environmentalsciences/MainActivity.java
+          grep -q 'body.bookmode .book-toolbar{display:none!important}' app/src/main/assets/index.html
+          grep -q 'versionCode 10208' app/build.gradle
+          grep -q "versionName '1.2.8'" app/build.gradle
+
+      - name: Build, test and lint
+        working-directory: build-source/Environmental-Sciences-Android
+        run: gradle --no-daemon clean lint test assembleDebug bundleRelease
+
+      - name: Verify outputs
+        working-directory: build-source/Environmental-Sciences-Android
+        shell: bash
+        run: |
+          test -s app/build/outputs/apk/debug/app-debug.apk
+          test -s app/build/outputs/bundle/release/app-release.aab
+          sha256sum app/build/outputs/apk/debug/app-debug.apk app/build/outputs/bundle/release/app-release.aab
+
+      - name: Upload v1.2.8 build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: environmental-studies-v1.2.8-native-controls-build
+          if-no-files-found: error
+          retention-days: 30
+          path: |
+            build-source/Environmental-Sciences-Android/app/build/outputs/apk/debug/app-debug.apk
+            build-source/Environmental-Sciences-Android/app/build/outputs/bundle/release/app-release.aab
+            build-source/Environmental-Sciences-Android/app/build/reports/lint-results-debug.html
