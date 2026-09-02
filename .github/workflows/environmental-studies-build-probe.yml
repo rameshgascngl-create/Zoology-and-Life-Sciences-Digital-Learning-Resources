@@ -1,8 +1,9 @@
-name: Environmental Studies Android Build Probe
+      name: Environmental Studies Android Build Probe
 
 on:
   push:
-    branches: [environmental-studies-build-fix]
+    branches:
+      - environmental-studies-build-fix
   workflow_dispatch:
 
 jobs:
@@ -10,36 +11,140 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      # ------------------------------------------------------------
+      # 1. CHECK OUT REPOSITORY
+      # ------------------------------------------------------------
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - name: Extract project
+      # ------------------------------------------------------------
+      # 2. EXTRACT ENVIRONMENTAL STUDIES v1.0.9 SOURCE
+      # ------------------------------------------------------------
+      - name: Extract Environmental Studies v1.0.9
         run: |
+          rm -rf /tmp/es
           mkdir -p /tmp/es
+
           unzip ".build/Environmental-Studies-Android-Source-v1.0.9-Scroll-Reliability-Hotfix (1).zip" -d /tmp/es
 
-      - uses: actions/setup-java@v4
+          echo "=========================================="
+          echo "Extracted project structure"
+          echo "=========================================="
+
+          find /tmp/es -maxdepth 4 -type f \( -name "settings.gradle" -o -name "settings.gradle.kts" \) -print
+
+      # ------------------------------------------------------------
+      # 3. JAVA 17
+      # ------------------------------------------------------------
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      - uses: android-actions/setup-android@v3
+      # ------------------------------------------------------------
+      # 4. ANDROID SDK
+      # ------------------------------------------------------------
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
 
-      - name: Install SDK
-        run: sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools"
+      - name: Install Android API 36
+        run: |
+          sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools"
 
-      - uses: gradle/actions/setup-gradle@v4
+      # ------------------------------------------------------------
+      # 5. GRADLE 8.11.1
+      # ------------------------------------------------------------
+      - name: Set up Gradle 8.11.1
+        uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.11.1'
 
-      - name: Build
-        working-directory: /tmp/es/Environmental-Sciences-Android
-        run: gradle --no-daemon clean lint test assembleDebug bundleRelease
+      # ------------------------------------------------------------
+      # 6. LOCATE PROJECT AUTOMATICALLY AND BUILD
+      # ------------------------------------------------------------
+      - name: Build Environmental Studies v1.0.9
+        shell: bash
+        run: |
+          set -e
 
-      - name: Upload build artifacts
+          SETTINGS_FILE="$(find /tmp/es -type f \( -name "settings.gradle" -o -name "settings.gradle.kts" \) | head -n 1)"
+
+          if [ -z "$SETTINGS_FILE" ]; then
+            echo "ERROR: Android Gradle project not found."
+            echo "Contents of extracted ZIP:"
+            find /tmp/es -maxdepth 5 -print
+            exit 1
+          fi
+
+          PROJECT_DIR="$(dirname "$SETTINGS_FILE")"
+
+          echo "=========================================="
+          echo "Android project detected"
+          echo "=========================================="
+          echo "$PROJECT_DIR"
+
+          cd "$PROJECT_DIR"
+
+          echo "=========================================="
+          echo "Running Gradle build"
+          echo "=========================================="
+
+          gradle --no-daemon clean lint test assembleDebug bundleRelease
+
+      # ------------------------------------------------------------
+      # 7. COLLECT APK, AAB AND LINT REPORT
+      # ------------------------------------------------------------
+      - name: Collect build outputs
+        shell: bash
+        run: |
+          set -e
+
+          rm -rf /tmp/es-output
+          mkdir -p /tmp/es-output
+
+          APK="$(find /tmp/es -type f -path "*/outputs/apk/debug/app-debug.apk" | head -n 1)"
+          AAB="$(find /tmp/es -type f -path "*/outputs/bundle/release/app-release.aab" | head -n 1)"
+          LINT="$(find /tmp/es -type f -name "lint-results-debug.html" | head -n 1)"
+
+          if [ -z "$APK" ]; then
+            echo "ERROR: app-debug.apk was not generated."
+            exit 1
+          fi
+
+          if [ -z "$AAB" ]; then
+            echo "ERROR: app-release.aab was not generated."
+            exit 1
+          fi
+
+          if [ -z "$LINT" ]; then
+            echo "ERROR: lint-results-debug.html was not generated."
+            exit 1
+          fi
+
+          cp "$APK" /tmp/es-output/Environmental-Studies-v1.0.9-debug.apk
+          cp "$AAB" /tmp/es-output/Environmental-Studies-v1.0.9-release.aab
+          cp "$LINT" /tmp/es-output/lint-results-debug.html
+
+          echo "=========================================="
+          echo "BUILD OUTPUTS"
+          echo "=========================================="
+
+          ls -lh /tmp/es-output
+
+          echo "=========================================="
+          echo "SHA-256"
+          echo "=========================================="
+
+          sha256sum /tmp/es-output/Environmental-Studies-v1.0.9-debug.apk
+          sha256sum /tmp/es-output/Environmental-Studies-v1.0.9-release.aab
+
+      # ------------------------------------------------------------
+      # 8. UPLOAD ARTIFACT
+      # ------------------------------------------------------------
+      - name: Upload Environmental Studies v1.0.9 build
         uses: actions/upload-artifact@v4
         with:
           name: environmental-studies-v1.0.9-build
-          path: |
-            /tmp/es/Environmental-Sciences-Android/app/build/outputs/apk/debug/app-debug.apk
-            /tmp/es/Environmental-Sciences-Android/app/build/outputs/bundle/release/app-release.aab
-            /tmp/es/Environmental-Sciences-Android/app/build/reports/lint-results-debug.html
+          path: /tmp/es-output/
+          if-no-files-found: error
