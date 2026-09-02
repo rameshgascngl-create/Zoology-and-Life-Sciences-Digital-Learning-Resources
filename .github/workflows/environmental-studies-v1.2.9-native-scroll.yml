@@ -41,6 +41,10 @@ jobs:
         shell: bash
         run: python .build/environmental-studies-v1.2.9/apply_v129.py build-source/Environmental-Sciences-Android
 
+      - name: Apply v1.2.9 compile correction
+        shell: bash
+        run: python .build/environmental-studies-v1.2.9/fix_compile.py build-source/Environmental-Sciences-Android
+
       - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
@@ -74,6 +78,7 @@ jobs:
           grep -q 'new ScrollView(this)' app/src/main/java/edu/gascnagercoil/environmentalsciences/MainActivity.java
           grep -q 'addJavascriptInterface(new ReaderHost(), "AndroidHost")' app/src/main/java/edu/gascnagercoil/environmentalsciences/MainActivity.java
           grep -q 'setNestedScrollingEnabled(false)' app/src/main/java/edu/gascnagercoil/environmentalsciences/MainActivity.java
+          grep -q 'android.view.ViewGroup.LayoutParams lp = webView.getLayoutParams();' app/src/main/java/edu/gascnagercoil/environmentalsciences/MainActivity.java
           grep -q 'window.reportHostHeight=function()' app/src/main/assets/index.html
           grep -q 'versionCode 10209' app/build.gradle
           grep -q "versionName '1.2.9'" app/build.gradle
