@@ -15,7 +15,7 @@ jobs:
       - name: Extract project
         run: |
           mkdir -p /tmp/es
-          unzip ".build/Environmental-Studies-Android-Source-v1.0.9-Scroll-Reliability-Hotfix.zip" -d /tmp/es
+          unzip ".build/Environmental-Studies-Android-Source-v1.0.9-Scroll-Reliability-Hotfix (1).zip" -d /tmp/es
 
       - uses: actions/setup-java@v4
         with:
