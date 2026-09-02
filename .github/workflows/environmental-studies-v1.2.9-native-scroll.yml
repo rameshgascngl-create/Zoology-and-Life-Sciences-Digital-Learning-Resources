@@ -33,8 +33,9 @@ jobs:
           test -f build-source/Environmental-Sciences-Android/app/build.gradle
 
       - name: Apply v1.2.8 native control base
+        working-directory: build-source/Environmental-Sciences-Android
         shell: bash
-        run: python .build/environmental-studies-v1.2.8/apply_v128.py build-source/Environmental-Sciences-Android
+        run: python ../../.build/environmental-studies-v1.2.8/apply_v128.py
 
       - name: Apply v1.2.9 native ScrollView correction
         shell: bash
