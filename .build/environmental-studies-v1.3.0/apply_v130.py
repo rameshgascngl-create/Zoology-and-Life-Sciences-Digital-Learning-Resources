@@ -39,27 +39,26 @@ for f in sorted(units.glob('unit-*.html')):
 
 idx=root/'app/src/main/assets/index.html'
 html=idx.read_text(encoding='utf-8').replace('v1.2.9','v1.3.0')
-m=re.search(r'function reportAndroidContentHeight\(\)\{[\s\S]*?\n\}',html)
-if not m: raise RuntimeError('reportAndroidContentHeight not found')
-new="""function reportAndroidContentHeight(){
-  try{
-    if(window.AndroidHost&&typeof window.AndroidHost.setContentHeight==='function'){
-      requestAnimationFrame(()=>requestAnimationFrame(()=>{
-        const page=document.getElementById('bookPage');
-        let h=0;
-        if(document.body.classList.contains('bookmode')&&page){
-          const r=page.getBoundingClientRect();
-          h=Math.ceil(Math.max(page.scrollHeight,page.offsetHeight,r.height));
-        }else{
-          h=Math.ceil(Math.max(document.documentElement.scrollHeight,document.body.scrollHeight));
-        }
-        window.AndroidHost.setContentHeight(Math.max(1,h));
-      }));
-    }
-  }catch(e){}
-}"""
-html=html[:m.start()]+new+html[m.end():]
-html+='\n<style>@media(max-width:700px){.book-page-number{position:static!important;right:auto!important;bottom:auto!important;text-align:center!important;margin:24px 0 0!important}.depth-extension{margin-top:22px;padding-top:12px;border-top:1px solid #d8e1dc}.depth-extension h4{color:#174f42;margin:10px 0 8px}}</style>\n'
+# Override whatever earlier height reporter exists. The Android build has used both
+# setContentHeight() and pageRendered() bridges across prior reader revisions.
+override="""
+<script>
+(function(){
+  window.reportAndroidContentHeight=function(){
+    try{
+      const page=document.getElementById('bookPage');
+      const r=page?page.getBoundingClientRect():null;
+      const h=Math.ceil(page?Math.max(page.scrollHeight,page.offsetHeight,r?r.height:0):document.documentElement.scrollHeight);
+      if(window.AndroidHost&&typeof AndroidHost.setContentHeight==='function') AndroidHost.setContentHeight(Math.max(1,h));
+      if(window.AndroidHost&&typeof AndroidHost.pageRendered==='function') AndroidHost.pageRendered(Number(typeof bookIndex==='number'?bookIndex:0),Math.max(1,h));
+    }catch(e){}
+  };
+  window.reportHostHeight=window.reportAndroidContentHeight;
+})();
+</script>
+<style>@media(max-width:700px){.book-page-number{position:static!important;right:auto!important;bottom:auto!important;text-align:center!important;margin:24px 0 0!important}.depth-extension{margin-top:22px;padding-top:12px;border-top:1px solid #d8e1dc}.depth-extension h4{color:#174f42;margin:10px 0 8px}}</style>
+"""
+html=html.replace('</body>',override+'</body>') if '</body>' in html else html+override
 idx.write_text(html,encoding='utf-8')
 
 bg=root/'app/build.gradle'
