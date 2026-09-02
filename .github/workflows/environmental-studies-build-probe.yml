@@ -1,4 +1,4 @@
-      name: Environmental Studies Android Build Probe
+     name: Environmental Studies Android Build Probe
 
 on:
   push:
