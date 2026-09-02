@@ -1,4 +1,4 @@
-name: Environmental Studies v1.3.1 Audit Corrected Build
+name: Environmental Studies v1.3.2 Privacy Footer Build
 
 on:
   push:
@@ -41,6 +41,8 @@ jobs:
         run: python .build/environmental-studies-v1.3.1/apply_v131.py build-source/Environmental-Sciences-Android
       - name: Normalize v1.3.1 native controls
         run: python .build/environmental-studies-v1.3.1/fix_controls.py build-source/Environmental-Sciences-Android
+      - name: Apply v1.3.2 Privacy footer and release metadata
+        run: python .build/environmental-studies-v1.3.1/apply_privacy_footer.py build-source/Environmental-Sciences-Android
       - name: Include complete v1.3.0 final source audit
         run: cp docs/environmental-studies/v1.3.0-final-source-audit.md build-source/Environmental-Sciences-Android/docs/audits/v1.3.0-final-source-audit.md
       - name: Verify paired bilingual DOM
@@ -82,9 +84,9 @@ jobs:
           from pathlib import Path
           import json
           bg=Path('app/build.gradle').read_text(); rd=Path('README.md').read_text(); cat=json.loads(Path('app/src/main/assets/book-catalog.json').read_text())
-          assert "versionName '1.3.1'" in bg and 'versionCode 10301' in bg
-          assert 'v1.3.1' in rd and 'versionCode: `10301`' in rd
-          assert cat['version']=='1.3.1' and len(cat['pages'])==80
+          assert "versionName '1.3.2'" in bg and 'versionCode 10302' in bg
+          assert 'v1.3.2' in rd and 'versionCode: `10302`' in rd
+          assert cat['version']=='1.3.2' and len(cat['pages'])==80
           q=0
           for f in Path('app/src/main/assets/units').glob('unit-*.html'):
             s=BeautifulSoup(f.read_text(encoding='utf-8'),'html.parser')
@@ -110,7 +112,7 @@ jobs:
       - name: Install project verifier dependencies
         working-directory: build-source/Environmental-Sciences-Android
         run: python -m pip install --disable-pip-version-check -r tools/requirements.txt
-      - name: Run canonical v1.3.1 verifier
+      - name: Run canonical v1.3.2 verifier
         working-directory: build-source/Environmental-Sciences-Android
         run: python tools/verify_content_integrity.py
       - name: JavaScript syntax audit
@@ -139,13 +141,20 @@ jobs:
           unzip -l app/build/outputs/bundle/release/app-release.aab | tee /tmp/aab-list.txt
           test "$(grep -c 'base/dex/classes.*dex' /tmp/aab-list.txt)" -eq 1
           ! grep -q 'notification_template\|notification_bg' /tmp/aab-list.txt
-      - name: Upload v1.3.1 build artifact
+      - name: Verify APK signing and package revised source
+        working-directory: build-source/Environmental-Sciences-Android
+        run: |
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose app/build/outputs/apk/debug/app-debug.apk
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging app/build/outputs/apk/debug/app-debug.apk | head -n 1
+          zip -qr ../Environmental-Studies-Android-v1.3.2-PRIVACY-FOOTER-SOURCE.zip . -x 'app/build/*' '.gradle/*' '.kotlin/*'
+      - name: Upload v1.3.2 build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: environmental-studies-v1.3.1-audit-corrected
+          name: environmental-studies-v1.3.2-privacy-footer
           retention-days: 30
           if-no-files-found: error
           path: |
+            build-source/Environmental-Studies-Android-v1.3.2-PRIVACY-FOOTER-SOURCE.zip
             build-source/Environmental-Sciences-Android/app/build/outputs/apk/debug/app-debug.apk
             build-source/Environmental-Sciences-Android/app/build/outputs/bundle/release/app-release.aab
             build-source/Environmental-Sciences-Android/app/build/reports/lint-results-debug.html
