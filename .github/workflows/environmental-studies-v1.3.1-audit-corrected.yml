@@ -38,6 +38,57 @@ jobs:
         run: python .build/environmental-studies-v1.3.0/apply_v130.py build-source/Environmental-Sciences-Android
       - name: Apply v1.3.1 audit corrections
         run: python .build/environmental-studies-v1.3.1/apply_v131.py build-source/Environmental-Sciences-Android
+      - name: Verify paired bilingual DOM
+        working-directory: build-source/Environmental-Sciences-Android
+        run: |
+          python - <<'PY'
+          from bs4 import BeautifulSoup
+          from pathlib import Path
+          n=0
+          for f in Path('app/src/main/assets/units').glob('unit-*.html'):
+            s=BeautifulSoup(f.read_text(encoding='utf-8'),'html.parser')
+            for a in s.select('article.lesson'):
+              assert not a.find('section',class_='ta-block',recursive=False), a.get('id')
+              roles={x.get('data-pair-role') for x in a.select(':scope > section.bilingual-pair')}
+              assert {'learning-outcome','key-terms','think-apply','summary'} <= roles, (a.get('id'),roles)
+              assert len(a.get_text(' ',strip=True).split())>=300, a.get('id')
+              n+=1
+          assert n==46,n
+          print('PAIRED DOM PASS 46/46')
+          PY
+      - name: Verify reader and Android architecture
+        working-directory: build-source/Environmental-Sciences-Android
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          idx=Path('app/src/main/assets/index.html').read_text(encoding='utf-8')
+          java=Path('app/src/main/java/edu/gascnagercoil/environmentalsciences/MainActivity.java').read_text(encoding='utf-8')
+          assert idx.count('v1.3.1 authoritative Android handset reader')==1
+          assert "x==='ta'||x==='both'" in idx
+          for x in ('new ScrollView(this)','setNestedScrollingEnabled(false)','makeButton("EN+TA")','makeButton("▣ Figures")','@JavascriptInterface'): assert x in java,x
+          assert java.count('@JavascriptInterface')==1
+          print('READER ARCHITECTURE PASS')
+          PY
+      - name: Verify release metadata and assessment
+        working-directory: build-source/Environmental-Sciences-Android
+        run: |
+          python - <<'PY'
+          from bs4 import BeautifulSoup
+          from pathlib import Path
+          import json
+          bg=Path('app/build.gradle').read_text(); rd=Path('README.md').read_text(); cat=json.loads(Path('app/src/main/assets/book-catalog.json').read_text())
+          assert "versionName '1.3.1'" in bg and 'versionCode 10301' in bg
+          assert 'v1.3.1' in rd and 'versionCode: `10301`' in rd
+          assert cat['version']=='1.3.1' and len(cat['pages'])==80
+          q=0
+          for f in Path('app/src/main/assets/units').glob('unit-*.html'):
+            s=BeautifulSoup(f.read_text(encoding='utf-8'),'html.parser')
+            for m in s.select('.mcq'):
+              assert m.select_one('p .en') and m.select_one('p .ta') and len(m.select('label .ta'))==4
+              q+=1
+          assert q==58,q
+          print('METADATA + MCQ PASS')
+          PY
       - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
