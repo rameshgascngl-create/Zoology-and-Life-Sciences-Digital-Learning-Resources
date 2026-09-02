@@ -72,12 +72,14 @@ for old, new in [
     ("cat.get('version')!='1.3.1'", "cat.get('version')!='1.3.2'"),
     ("versionName '1.3.1'", "versionName '1.3.2'"),
     ('versionCode 10301', 'versionCode 10302'),
-    ("if 'v1.3.1' not in readme", "if '# Environmental Studies Android — v1.3.2' not in readme"),
+    ("if 'v1.3.1' not in ", "if '# Environmental Studies Android — v1.3.2' not in "),
     ('versionCode: `10301`', 'versionCode: `10302`'),
     ('VERIFY PASS: v1.3.1 ', 'VERIFY PASS: v1.3.2 '),
 ]:
     verifier = replace_once(verifier, old, new)
-footer_check = '''privacy=BeautifulSoup((A/'privacy.html').read_text(encoding='utf-8'),'html.parser')
+footer_check = '''import hashlib
+readme=(ROOT/'README.md').read_text(encoding='utf-8')
+privacy=BeautifulSoup((A/'privacy.html').read_text(encoding='utf-8'),'html.parser')
 footer=privacy.select('footer#privacyFooter')
 if len(footer)!=1 or footer[0].get_text(' ',strip=True)!='R.Ramesh Department of Zoology Government Arts and Science College Nagercoil, Tamil Nadu': errs.append('Privacy footer identity')
 if 'versionName: `1.3.2`' not in readme: errs.append('README versionName')
@@ -86,7 +88,7 @@ for path,expected in revision['preserved_files'].items():
  if hashlib.sha256((ROOT/path).read_bytes()).hexdigest()!=expected: errs.append('preserved content '+path)
 if hashlib.sha256((A/'privacy.html').read_bytes()).hexdigest()!=revision['privacy_sha256']: errs.append('Privacy content hash')
 '''
-verifier = replace_once(verifier, 'if errs:\n', footer_check + 'if errs:\n')
+verifier = replace_once(verifier, 'if errs:', footer_check + 'if errs:')
 verifier_path.write_text(verifier)
 
 meta_path = ROOT / 'verification/app-build-metadata.json'
