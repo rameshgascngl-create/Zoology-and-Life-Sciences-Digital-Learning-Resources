@@ -1,4 +1,5 @@
 name: Environmental Studies v1.3.5 Beta APK
+# Reproducible build for the exact approved source SHA256 below.
 on:
   workflow_dispatch:
   push:
