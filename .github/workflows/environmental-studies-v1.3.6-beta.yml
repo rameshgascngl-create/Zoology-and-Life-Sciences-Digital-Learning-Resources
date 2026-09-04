@@ -1,0 +1,135 @@
+name: Environmental Studies v1.3.6 Beta APK
+# Reproducible build for the exact approved source SHA256 below.
+on:
+  workflow_dispatch:
+  push:
+    branches: [environmental-studies-v1.3.6-beta]
+    paths:
+      - Environmental-Studies-Android-v1.3.6-BETA-SOURCE.zip
+      - .github/workflows/environmental-studies-v1.3.6-beta.yml
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - name: Verify and extract approved source
+        shell: bash
+        run: |
+          echo '7be472b7ec0c8e5724363467e0f6c898441b9d4f0475fa1ac958d27f835d0c61  Environmental-Studies-Android-v1.3.6-BETA-SOURCE.zip' | sha256sum -c -
+          test ! -e build-v136
+          unzip -q Environmental-Studies-Android-v1.3.6-BETA-SOURCE.zip -d build-v136
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: android-actions/setup-android@v3
+      - name: Install Android platform and verification tools
+        run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'platform-tools'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+      - name: Source integrity and regression tests
+        working-directory: build-v136
+        run: |
+          python -m pip install --disable-pip-version-check -r tools/requirements.txt
+          python tools/run_source_checks.py
+      - name: Rendered reader layout and spacing regressions
+        working-directory: build-v136
+        run: |
+          python -m pip install -r tools/requirements-layout.txt
+          python -m playwright install --with-deps chromium
+          sudo apt-get install -y fonts-noto-core
+          unzip -q ../Environmental-Studies-Android-v1.3.5-BETA-SOURCE.zip -d ../layout-baseline-v135
+          python tools/test_layout.py --baseline-assets ../layout-baseline-v135/app/src/main/assets
+      - name: Lint, Android tests and builds
+        working-directory: build-v136
+        run: gradle --no-daemon clean lint test assembleDebug assembleRelease bundleRelease
+      - name: Report actual DEX payloads
+        working-directory: build-v136
+        run: python tools/report_dex.py
+      - name: Verify APK signature and package metadata
+        working-directory: build-v136
+        run: |
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs app/build/outputs/apk/debug/app-debug.apk > verification/apk-signature.txt
+          if "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify app/build/outputs/apk/release/app-release-unsigned.apk; then
+            echo 'Unexpected: unsigned release APK passed signature verification' >&2
+            exit 1
+          else
+            echo 'PASS: release APK is intentionally unsigned; no production key is configured.' > verification/release-signing-status.txt
+          fi
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging app/build/outputs/apk/debug/app-debug.apk > verification/apk-metadata.txt
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump permissions app/build/outputs/apk/debug/app-debug.apk > verification/apk-permissions.txt
+      - name: Compare compiled assets with approved source
+        id: version
+        working-directory: build-v136
+        shell: bash
+        run: |
+          python tools/print_version.py >> "$GITHUB_OUTPUT"
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib,json,os,re,zipfile
+          root=Path('.')
+          apk=root/'app/build/outputs/apk/debug/app-debug.apk'
+          release_apk=root/'app/build/outputs/apk/release/app-release-unsigned.apk'
+          aab=root/'app/build/outputs/bundle/release/app-release.aab'
+          source=Path('../Environmental-Studies-Android-v1.3.6-BETA-SOURCE.zip')
+          gradle=(root/'app/build.gradle').read_text()
+          version=re.search(r"versionName\s+'([^']+)'",gradle).group(1)
+          code=re.search(r'versionCode\s+(\d+)',gradle).group(1)
+          metadata=(root/'verification/apk-metadata.txt').read_text()
+          assert "package: name='edu.gascnagercoil.environmentalsciences'" in metadata
+          assert f"versionName='{version}'" in metadata and f"versionCode='{code}'" in metadata
+          assert 'android.permission.INTERNET' not in (root/'verification/apk-permissions.txt').read_text()
+          approved=root/'app/src/main/assets';matched=[]
+          with zipfile.ZipFile(apk) as built:
+              for path in sorted(approved.rglob('*')):
+                  if path.is_file():
+                      name='assets/'+path.relative_to(approved).as_posix()
+                      assert built.read(name)==path.read_bytes(),name
+                      matched.append(name)
+              assert sorted(n for n in built.namelist() if n.startswith('assets/') and not n.endswith('/'))==sorted(matched)
+          dex=json.loads((root/'verification/release-dex-report.json').read_text())
+          assert dex['artifacts']['release_unsigned_apk']['dex_count'] >= 1
+          report={'commit':os.environ['GITHUB_SHA'],'run':os.environ['GITHUB_RUN_ID'],'versionName':version,'versionCode':int(code),'kind':'debug beta; handset testing pending; release outputs unsigned','matched_assets':matched,'apk_sha256':hashlib.sha256(apk.read_bytes()).hexdigest(),'source_sha256':hashlib.sha256(source.read_bytes()).hexdigest(),'release_unsigned_apk_sha256':hashlib.sha256(release_apk.read_bytes()).hexdigest(),'release_aab_sha256':hashlib.sha256(aab.read_bytes()).hexdigest(),'release_dex':dex['artifacts']['release_unsigned_apk']}
+          (root/'verification/build-provenance.json').write_text(json.dumps(report,indent=2)+'\n')
+          print('PASS: APK identity, debug signature, offline permission, DEX report and exact bundled assets')
+          PY
+      - name: Upload verified APK and matching source
+        uses: actions/upload-artifact@v4
+        with:
+          name: environmental-studies-v${{ steps.version.outputs.version }}-beta-test
+          if-no-files-found: error
+          path: |
+            build-v136/app/build/outputs/apk/debug/app-debug.apk
+            build-v136/app/build/outputs/apk/release/app-release-unsigned.apk
+            build-v136/app/build/outputs/bundle/release/app-release.aab
+            Environmental-Studies-Android-v1.3.6-BETA-SOURCE.zip
+            build-v136/verification/source-test-results.txt
+            build-v136/verification/release-integrity.json
+            build-v136/verification/release-dex-report.json
+            build-v136/verification/layout/
+            build-v136/verification/apk-signature.txt
+            build-v136/verification/release-signing-status.txt
+            build-v136/verification/apk-metadata.txt
+            build-v136/verification/apk-permissions.txt
+            build-v136/verification/build-provenance.json
+            build-v136/app/build/reports/lint-results-debug.html
+      - name: Preserve diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: environmental-studies-v1.3.6-build-diagnostics
+          if-no-files-found: ignore
+          path: |
+            build-v136/app/build/reports/
+            build-v136/verification/layout/
+            build-v136/verification/source-test-results.txt
