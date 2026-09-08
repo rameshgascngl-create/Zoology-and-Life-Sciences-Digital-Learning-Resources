@@ -44,7 +44,9 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
-          p = Path('Cell-Biology-Android/work/CellBiologyAndroid-v3.12.1/app/src/main/java/in/gov/tn/gascngl/zoology/cellbiology/MainActivity.java')
+          root = Path('Cell-Biology-Android/work/CellBiologyAndroid-v3.12.1')
+
+          p = root / 'app/src/main/java/in/gov/tn/gascngl/zoology/cellbiology/MainActivity.java'
           s = p.read_text()
           replacements = [
               ('import android.app.PrintManager;', 'import android.print.PrintManager;'),
@@ -63,7 +65,18 @@ jobs:
           assert 'BuildConfig.DEBUG' not in s
           assert 'WebViewClientCompat' not in s
           assert 'new WebViewClient()' in s
-          print('Native compile remediation applied.')
+
+          b = root / 'app/build.gradle.kts'
+          g = b.read_text()
+          marker = '    buildTypes {\n'
+          build_features = '    buildFeatures {\n        buildConfig = true\n    }\n\n'
+          if build_features not in g:
+              if marker not in g:
+                  raise SystemExit('buildTypes marker missing while enabling BuildConfig')
+              g = g.replace(marker, build_features + marker, 1)
+              b.write_text(g)
+          assert 'buildConfig = true' in b.read_text()
+          print('Native compile and BuildConfig remediation applied.')
           PY
 
       - name: Remove non-distributed bootstrap wrapper JAR from CI workspace
