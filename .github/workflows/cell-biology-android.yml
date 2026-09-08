@@ -40,6 +40,32 @@ jobs:
           tar -xJf Cell-Biology-Android/cellbio-source.tar.xz -C Cell-Biology-Android/work
           test -f Cell-Biology-Android/work/CellBiologyAndroid-v3.12.1/app/src/main/assets/www/index.html
 
+      - name: Apply native compile remediation
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('Cell-Biology-Android/work/CellBiologyAndroid-v3.12.1/app/src/main/java/in/gov/tn/gascngl/zoology/cellbiology/MainActivity.java')
+          s = p.read_text()
+          replacements = [
+              ('import android.app.PrintManager;', 'import android.print.PrintManager;'),
+              ('import android.content.Intent;', 'import android.content.Intent;\nimport android.content.pm.ApplicationInfo;'),
+              ('import android.webkit.WebView;', 'import android.webkit.WebView;\nimport android.webkit.WebViewClient;'),
+              ('import androidx.webkit.WebViewClientCompat;\n', ''),
+              ('WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG);', 'WebView.setWebContentsDebuggingEnabled(\n                (getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0);'),
+              ('webView.setWebViewClient(new WebViewClientCompat() {', 'webView.setWebViewClient(new WebViewClient() {'),
+          ]
+          for old, new in replacements:
+              if old not in s:
+                  raise SystemExit(f'expected compile-remediation marker missing: {old!r}')
+              s = s.replace(old, new, 1)
+          p.write_text(s)
+          assert 'android.app.PrintManager' not in s
+          assert 'BuildConfig.DEBUG' not in s
+          assert 'WebViewClientCompat' not in s
+          assert 'new WebViewClient()' in s
+          print('Native compile remediation applied.')
+          PY
+
       - name: Remove non-distributed bootstrap wrapper JAR from CI workspace
         run: |
           rm -f Cell-Biology-Android/work/CellBiologyAndroid-v3.12.1/gradle/wrapper/gradle-wrapper.jar
