@@ -1,0 +1,97 @@
+name: Cell Biology Android v3.12.1
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'Cell-Biology-Android/**'
+      - '.github/workflows/cell-biology-android.yml'
+  push:
+    branches: [ main ]
+    paths:
+      - 'Cell-Biology-Android/**'
+      - '.github/workflows/cell-biology-android.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Reconstruct audited v3.12.1 source
+        run: |
+          mkdir -p Cell-Biology-Android/work
+          cat Cell-Biology-Android/source-parts/part-*.b64 | base64 --decode > Cell-Biology-Android/cellbio-source.tar.xz
+          tar -xJf Cell-Biology-Android/cellbio-source.tar.xz -C Cell-Biology-Android/work
+          test -f Cell-Biology-Android/work/CellBiologyAndroid-v3.12.1/app/src/main/assets/www/index.html
+
+      - name: Verify reconstructed source digest
+        run: |
+          echo '2dde85e72cdb6dcc9afafc3d517b2aa23b1d2077a4afe9b093a2db6aa3e922a4  Cell-Biology-Android/cellbio-source.tar.xz' | sha256sum -c -
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android API 36
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Set up Gradle 9.6.0
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.0'
+
+      - name: Verify bundled HTML release invariants
+        working-directory: Cell-Biology-Android/work/CellBiologyAndroid-v3.12.1
+        run: node tools/verify_html.mjs
+
+      - name: Unit test, lint and assemble
+        working-directory: Cell-Biology-Android/work/CellBiologyAndroid-v3.12.1
+        run: |
+          gradle --no-daemon \
+            :app:testDebugUnitTest \
+            :app:lintDebug \
+            :app:assembleDebug \
+            :app:assembleDebugAndroidTest \
+            --stacktrace
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: CellBiologyLearningHub-v3.12.1-debug
+          path: Cell-Biology-Android/work/CellBiologyAndroid-v3.12.1/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          compression-level: 0
+
+      - name: Upload instrumentation APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: CellBiologyLearningHub-v3.12.1-androidTest
+          path: Cell-Biology-Android/work/CellBiologyAndroid-v3.12.1/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+          if-no-files-found: error
+          compression-level: 0
+
+      - name: Upload lint report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: CellBiologyLearningHub-v3.12.1-lint
+          path: Cell-Biology-Android/work/CellBiologyAndroid-v3.12.1/app/build/reports/lint-results-debug.html
+          if-no-files-found: ignore
