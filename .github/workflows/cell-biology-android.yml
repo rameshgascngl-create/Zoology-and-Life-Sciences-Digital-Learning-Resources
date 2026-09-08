@@ -40,6 +40,10 @@ jobs:
           tar -xJf Cell-Biology-Android/cellbio-source.tar.xz -C Cell-Biology-Android/work
           test -f Cell-Biology-Android/work/CellBiologyAndroid-v3.12.1/app/src/main/assets/www/index.html
 
+      - name: Remove non-distributed bootstrap wrapper JAR from CI workspace
+        run: |
+          rm -f Cell-Biology-Android/work/CellBiologyAndroid-v3.12.1/gradle/wrapper/gradle-wrapper.jar
+
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
