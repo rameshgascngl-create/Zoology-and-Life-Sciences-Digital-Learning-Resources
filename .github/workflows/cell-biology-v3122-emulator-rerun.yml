@@ -70,9 +70,9 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -no-snapshot -noaudio -no-boot-anim -camera-back none -gpu swiftshader_indirect -no-metrics
           script: |
-            set -euo pipefail
+            set -eu
             mkdir -p validation-output
-            trap 'adb exec-out screencap -p > validation-output/failure-api-${{ matrix.api }}.png || true; adb logcat -d > validation-output/logcat-api-${{ matrix.api }}.txt || true' ERR
+            trap 'adb exec-out screencap -p > validation-output/failure-api-${{ matrix.api }}.png || true; adb logcat -d > validation-output/logcat-api-${{ matrix.api }}.txt || true' 0
 
             APP_APK=$(find artifacts/app -name '*.apk' | head -1)
             TEST_APK=$(find artifacts/test -name '*.apk' | head -1)
@@ -121,6 +121,7 @@ jobs:
 
             adb exec-out screencap -p > validation-output/final-api-${{ matrix.api }}.png || true
             adb logcat -d > validation-output/logcat-api-${{ matrix.api }}.txt || true
+            trap - 0
 
       - name: Upload API ${{ matrix.api }} evidence
         if: always()
