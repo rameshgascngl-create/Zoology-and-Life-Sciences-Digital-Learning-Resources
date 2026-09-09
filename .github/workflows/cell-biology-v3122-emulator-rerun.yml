@@ -59,6 +59,83 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
+      - name: Prepare atomic validation script
+        shell: bash
+        run: |
+          cat > /tmp/cellbio-emulator-validation.sh <<'BASH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          API="$1"
+          cd "$GITHUB_WORKSPACE"
+          mkdir -p validation-output
+          cleanup() {
+            adb exec-out screencap -p > "validation-output/failure-api-${API}.png" 2>/dev/null || true
+            adb logcat -d > "validation-output/logcat-api-${API}.txt" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+
+          APP_APK=$(find artifacts/app -name '*.apk' -print -quit)
+          TEST_APK=$(find artifacts/test -name '*.apk' -print -quit)
+          test -n "$APP_APK"
+          test -n "$TEST_APK"
+          echo "Canonical artifacts sourced from successful build run 34327823003." | tee "validation-output/provenance-api-${API}.txt"
+          sha256sum "$APP_APK" "$TEST_APK" | tee "validation-output/apk-sha256-api-${API}.txt"
+          adb shell getprop ro.build.version.release | tee "validation-output/android-release-api-${API}.txt"
+          adb shell getprop ro.build.version.sdk | tee "validation-output/android-sdk-api-${API}.txt"
+
+          adb install -r "$APP_APK"
+          adb install -r "$TEST_APK"
+
+          PKG=in.gov.tn.gascngl.zoology.cellbiology
+          TESTPKG=in.gov.tn.gascngl.zoology.cellbiology.test
+          RUNNER=androidx.test.runner.AndroidJUnitRunner
+          CLASS=in.gov.tn.gascngl.zoology.cellbiology.MainActivitySmokeTest
+          adb shell pm list instrumentation | tee "validation-output/instrumentation-api-${API}.txt"
+
+          if [ "$API" -ge 33 ]; then
+            adb shell cmd overlay enable-exclusive --category com.android.internal.systemui.navbar.gestural || adb shell cmd overlay enable com.android.internal.systemui.navbar.gestural || true
+            adb shell cmd overlay list | grep -i navbar | tee "validation-output/navbar-api-${API}.txt" || true
+          fi
+
+          run_test() {
+            METHOD="$1"; shift
+            OUT="validation-output/api-${API}-${METHOD}-$(date +%s%N).txt"
+            echo "===== API ${API} :: ${METHOD} $* ====="
+            set +e
+            adb shell am instrument -w -r "$@" -e class "$CLASS#$METHOD" "$TESTPKG/$RUNNER" | tee "$OUT"
+            RC=${PIPESTATUS[0]}
+            set -e
+            if [ "$RC" -ne 0 ] || grep -q 'FAILURES!!!' "$OUT" || ! grep -Eq 'OK \(1 test\)|INSTRUMENTATION_CODE: -1' "$OUT"; then
+              echo "FAILED: ${METHOD} on API ${API}" | tee -a "$OUT"
+              return 1
+            fi
+            echo "PASSED: ${METHOD} on API ${API}" | tee -a "$OUT"
+          }
+
+          run_test launchesOfflineHardenedWebView
+          run_test bootTamilThemeAndResponsiveLayout -e cbilSize 360x800 -e cbilDensity 320 -e cbilOrientation portrait
+          run_test bootTamilThemeAndResponsiveLayout -e cbilSize 800x360 -e cbilDensity 320 -e cbilOrientation landscape
+          run_test bootTamilThemeAndResponsiveLayout -e cbilSize 600x960 -e cbilDensity 160 -e cbilOrientation portrait
+          run_test bootTamilThemeAndResponsiveLayout -e cbilSize 960x600 -e cbilDensity 160 -e cbilOrientation landscape
+          run_test bootTamilThemeAndResponsiveLayout -e cbilSize 800x1280 -e cbilDensity 160 -e cbilOrientation portrait
+          run_test bootTamilThemeAndResponsiveLayout -e cbilSize 1280x800 -e cbilDensity 160 -e cbilOrientation landscape
+          run_test nativeBackReturnsToPreviousSection
+          run_test printFlowOpensAndroidPrintUi
+          run_test exportFlowOpensCreateDocumentPicker
+          run_test importFlowOpensOpenDocumentPicker
+          run_test persistencePhase1StoresMarker
+          adb shell am force-stop "$PKG"
+          sleep 1
+          run_test persistencePhase2ReadsMarker
+
+          adb exec-out screencap -p > "validation-output/final-api-${API}.png" || true
+          adb logcat -d > "validation-output/logcat-api-${API}.txt" || true
+          trap - EXIT
+          echo "ALL VALIDATIONS PASSED ON API ${API}" | tee "validation-output/PASS-api-${API}.txt"
+          BASH
+          chmod +x /tmp/cellbio-emulator-validation.sh
+          bash -n /tmp/cellbio-emulator-validation.sh
+
       - name: Android ${{ matrix.api }} validation
         uses: ReactiveCircus/android-emulator-runner@v2.38.0
         with:
@@ -69,59 +146,7 @@ jobs:
           emulator-boot-timeout: 600
           disable-animations: true
           emulator-options: -no-window -no-snapshot -noaudio -no-boot-anim -camera-back none -gpu swiftshader_indirect -no-metrics
-          script: |
-            set -eu
-            mkdir -p validation-output
-            trap 'adb exec-out screencap -p > validation-output/failure-api-${{ matrix.api }}.png || true; adb logcat -d > validation-output/logcat-api-${{ matrix.api }}.txt || true' 0
-
-            APP_APK=$(find artifacts/app -name '*.apk' | head -1)
-            TEST_APK=$(find artifacts/test -name '*.apk' | head -1)
-            test -n "$APP_APK"
-            test -n "$TEST_APK"
-            echo 'Canonical artifacts sourced from successful build run 34327823003.'
-            sha256sum "$APP_APK" "$TEST_APK" | tee validation-output/apk-sha256-api-${{ matrix.api }}.txt
-
-            adb install -r "$APP_APK"
-            adb install -r "$TEST_APK"
-
-            PKG=in.gov.tn.gascngl.zoology.cellbiology
-            TESTPKG=in.gov.tn.gascngl.zoology.cellbiology.test
-            RUNNER=androidx.test.runner.AndroidJUnitRunner
-            CLASS=in.gov.tn.gascngl.zoology.cellbiology.MainActivitySmokeTest
-
-            if [ '${{ matrix.api }}' -ge 33 ]; then
-              adb shell cmd overlay enable-exclusive --category com.android.internal.systemui.navbar.gestural || adb shell cmd overlay enable com.android.internal.systemui.navbar.gestural || true
-              adb shell cmd overlay list | grep -i navbar || true
-            fi
-
-            run_test() {
-              METHOD="$1"; shift
-              OUT="validation-output/api-${{ matrix.api }}-${METHOD}-$(date +%s%N).txt"
-              echo "===== API ${{ matrix.api }} :: $METHOD $* ====="
-              adb shell am instrument -w -r "$@" -e class "$CLASS#$METHOD" "$TESTPKG/$RUNNER" | tee "$OUT"
-              ! grep -q 'FAILURES!!!' "$OUT"
-              grep -Eq 'OK \(1 test\)|INSTRUMENTATION_CODE: -1' "$OUT"
-            }
-
-            run_test launchesOfflineHardenedWebView
-            run_test bootTamilThemeAndResponsiveLayout -e cbilSize 360x800 -e cbilDensity 320 -e cbilOrientation portrait
-            run_test bootTamilThemeAndResponsiveLayout -e cbilSize 800x360 -e cbilDensity 320 -e cbilOrientation landscape
-            run_test bootTamilThemeAndResponsiveLayout -e cbilSize 600x960 -e cbilDensity 160 -e cbilOrientation portrait
-            run_test bootTamilThemeAndResponsiveLayout -e cbilSize 960x600 -e cbilDensity 160 -e cbilOrientation landscape
-            run_test bootTamilThemeAndResponsiveLayout -e cbilSize 800x1280 -e cbilDensity 160 -e cbilOrientation portrait
-            run_test bootTamilThemeAndResponsiveLayout -e cbilSize 1280x800 -e cbilDensity 160 -e cbilOrientation landscape
-            run_test nativeBackReturnsToPreviousSection
-            run_test printFlowOpensAndroidPrintUi
-            run_test exportFlowOpensCreateDocumentPicker
-            run_test importFlowOpensOpenDocumentPicker
-            run_test persistencePhase1StoresMarker
-            adb shell am force-stop "$PKG"
-            sleep 1
-            run_test persistencePhase2ReadsMarker
-
-            adb exec-out screencap -p > validation-output/final-api-${{ matrix.api }}.png || true
-            adb logcat -d > validation-output/logcat-api-${{ matrix.api }}.txt || true
-            trap - 0
+          script: bash /tmp/cellbio-emulator-validation.sh ${{ matrix.api }}
 
       - name: Upload API ${{ matrix.api }} evidence
         if: always()
