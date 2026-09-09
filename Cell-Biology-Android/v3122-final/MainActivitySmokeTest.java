@@ -109,6 +109,8 @@ public class MainActivitySmokeTest {
             assertTrue(jsBool(web, "document.body.innerText.indexOf('Readiness')>=0"));
 
             if (Build.VERSION.SDK_INT >= 33) {
+                // CI enables gestural navigation before this test. A literal left-edge swipe
+                // validates Android's predictive/back-gesture dispatch path.
                 int w = device.getDisplayWidth();
                 int h = device.getDisplayHeight();
                 device.swipe(2, h / 2, Math.max(220, w / 2), h / 2, 24);
