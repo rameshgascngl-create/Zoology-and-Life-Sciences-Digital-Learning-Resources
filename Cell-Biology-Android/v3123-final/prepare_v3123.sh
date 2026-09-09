@@ -57,6 +57,9 @@ rm -f gradle/wrapper/gradle-wrapper.jar
 echo '8ef3044ddef1ca0bc1251d489fc63cd6905f8b22b8f154849ff190310e1059e4  Cell-Biology-Android/v3123-final/apply_v3123.py' | (cd "$ROOT" && sha256sum -c -)
 python "$ROOT/Cell-Biology-Android/v3123-final/apply_v3123.py" "$PROJECT"
 
+echo '4b1e3a26f46729615bf0bb77339d3902cb2084333f60b203300a4d9eda78a119  Cell-Biology-Android/v3123-final/fix_test_teardown.py' | (cd "$ROOT" && sha256sum -c -)
+python "$ROOT/Cell-Biology-Android/v3123-final/fix_test_teardown.py" "$PROJECT"
+
 mkdir -p tools
 echo '198ecb6a35f07d07d1dc268b4b18258919222a55ef7c236a61f0d17fb8f73292  Cell-Biology-Android/v3123-final/verify_canonical.py' | (cd "$ROOT" && sha256sum -c -)
 echo '7497c036718bbb57fa259ede1f97c1ad291864f51f47509b327aa494eb5028ca  Cell-Biology-Android/v3123-final/verify_html.mjs' | (cd "$ROOT" && sha256sum -c -)
@@ -64,7 +67,7 @@ cp "$ROOT/Cell-Biology-Android/v3123-final/verify_canonical.py" tools/verify_can
 cp "$ROOT/Cell-Biology-Android/v3123-final/verify_html.mjs" tools/verify_html.mjs
 
 echo '68b58282c497b7450b1d261873458e0c8528f31cf94e05d026e83c0cee167519  app/src/main/assets/www/index.html' | sha256sum -c -
-echo 'dff9d98f10142a26d6a59f8b27f4ce121f6f614c6b27a392da24c45496750148  app/src/androidTest/java/in/gov/tn/gascngl/zoology/cellbiology/MainActivitySmokeTest.java' | sha256sum -c -
+echo '4bd4d212f2fd5bea63859234471afd69bbe9d9406035a99280b6d8e109bc0576  app/src/androidTest/java/in/gov/tn/gascngl/zoology/cellbiology/MainActivitySmokeTest.java' | sha256sum -c -
 echo 'c87925c055a766072f617e92e92ce0714e3897285d4cb1447ff5fcc41908ba5c  app/src/main/java/in/gov/tn/gascngl/zoology/cellbiology/MainActivity.java' | sha256sum -c -
 grep -q 'versionName = "3.12.3"' app/build.gradle.kts
 grep -q 'versionCode = 31203' app/build.gradle.kts
