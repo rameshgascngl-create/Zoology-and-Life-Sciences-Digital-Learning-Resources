@@ -15,6 +15,8 @@ jobs:
   emulator:
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      QT_QPA_PLATFORM: offscreen
     strategy:
       fail-fast: false
       matrix:
@@ -29,8 +31,9 @@ jobs:
       - name: Install emulator runtime dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libpulse0
+          sudo apt-get install -y libpulse0 libxcb-cursor0
           ldconfig -p | grep 'libpulse.so.0'
+          dpkg -s libxcb-cursor0 | grep '^Status: install ok installed$'
 
       - name: Download canonical v3.12.2 app APK
         uses: actions/download-artifact@v4
@@ -65,7 +68,7 @@ jobs:
           profile: Nexus 6
           emulator-boot-timeout: 600
           disable-animations: true
-          emulator-options: -no-snapshot -noaudio -no-boot-anim -camera-back none -gpu swiftshader_indirect
+          emulator-options: -no-window -no-snapshot -noaudio -no-boot-anim -camera-back none -gpu swiftshader_indirect -no-metrics
           script: |
             set -euo pipefail
             mkdir -p validation-output
