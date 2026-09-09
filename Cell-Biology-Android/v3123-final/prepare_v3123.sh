@@ -67,7 +67,7 @@ cp "$ROOT/Cell-Biology-Android/v3123-final/verify_canonical.py" tools/verify_can
 cp "$ROOT/Cell-Biology-Android/v3123-final/verify_html.mjs" tools/verify_html.mjs
 
 echo '68b58282c497b7450b1d261873458e0c8528f31cf94e05d026e83c0cee167519  app/src/main/assets/www/index.html' | sha256sum -c -
-echo '4bd4d212f2fd5bea63859234471afd69bbe9d9406035a99280b6d8e109bc0576  app/src/androidTest/java/in/gov/tn/gascngl/zoology/cellbiology/MainActivitySmokeTest.java' | sha256sum -c -
+echo '2fa75e1062391b901c9bab9441f5df308eef69189d18d52729cb48f243973eee  app/src/androidTest/java/in/gov/tn/gascngl/zoology/cellbiology/MainActivitySmokeTest.java' | sha256sum -c -
 echo 'c87925c055a766072f617e92e92ce0714e3897285d4cb1447ff5fcc41908ba5c  app/src/main/java/in/gov/tn/gascngl/zoology/cellbiology/MainActivity.java' | sha256sum -c -
 grep -q 'versionName = "3.12.3"' app/build.gradle.kts
 grep -q 'versionCode = 31203' app/build.gradle.kts
