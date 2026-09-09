@@ -77,8 +77,16 @@ p.write_text(t, encoding='utf-8')
 
 # Provenance records the exact repaired HTML, while retaining exact original-APK hashes.
 prov = root / 'PROVENANCE.json'
-data = json.loads(prov.read_text(encoding='utf-8'))
 html = htmlp.read_bytes()
+if prov.exists():
+    data = json.loads(prov.read_text(encoding='utf-8'))
+else:
+    data = {
+        'source_apk': 'CellBiologyLearningHub-3.12.1-release.apk',
+        'source_apk_sha256': '4cbbee4cff9875c4a63a5b246672366d2c8817cdbc008b35e0abbba81eebf624',
+        'source_apk_html_sha256': 'c13b9f839246b3d5e9e2cf4c3cf42154368494cbf96e2d4933a803e6c92e74bf',
+        'provenance_note': 'Canonical maintenance tree reconstructed from the audited APK-derived baseline; original APK hashes retained for traceability.'
+    }
 data['patched_html_sha256'] = hashlib.sha256(html).hexdigest()
 data['patched_html_bytes'] = len(html)
 data['canonical_version'] = '3.12.3'
