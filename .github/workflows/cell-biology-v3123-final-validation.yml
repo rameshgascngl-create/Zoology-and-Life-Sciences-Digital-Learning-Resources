@@ -73,7 +73,7 @@ jobs:
       - name: Apply deterministic v3.12.3 compatibility repair
         run: |
           set -euo pipefail
-          echo 'f92dc47177d0bf0f3a3e1a74637e2065254b1681ded5c3c536ce00f86e60420c  Cell-Biology-Android/v3123-final/apply_v3123.py' | sha256sum -c -
+          echo '8ef3044ddef1ca0bc1251d489fc63cd6905f8b22b8f154849ff190310e1059e4  Cell-Biology-Android/v3123-final/apply_v3123.py' | sha256sum -c -
           python Cell-Biology-Android/v3123-final/apply_v3123.py Cell-Biology-Android/work-v3123/CellBiologyAndroid-v3.12.3
 
       - name: Verify canonical v3.12.3 invariants
