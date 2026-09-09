@@ -25,20 +25,16 @@ jobs:
           cat Cell-Biology-Android/source-parts/part-*.b64 | base64 --decode > /tmp/cellbio-v3121.tar.xz
           echo 'c33c32242d9fffeff167f19f073d8335292eba3f042b199ad2fc055fd2cdfe0c  /tmp/cellbio-v3121.tar.xz' | sha256sum -c -
 
-      - name: Reconstruct v3.12.2 patch
+      - name: Reconstruct and identify v3.12.2 patch
         run: |
           test "$(find Cell-Biology-Android/v3122-patch -maxdepth 1 -name 'p*.b64' | wc -l)" -eq 5
-          cat Cell-Biology-Android/v3122-patch/p*.b64 | base64 --decode > /tmp/cellbio-v3122-patch.tar.xz
-          echo 'PATCH_SHA256='$(sha256sum /tmp/cellbio-v3122-patch.tar.xz | awk '{print $1}')
-          xz -t /tmp/cellbio-v3122-patch.tar.xz
-          echo '--- v3.12.2 patch manifest ---'
-          tar -tvJf /tmp/cellbio-v3122-patch.tar.xz
-
-      - name: Inspect patch project markers
-        run: |
-          rm -rf /tmp/v3122patch && mkdir /tmp/v3122patch
-          tar -xJf /tmp/cellbio-v3122-patch.tar.xz -C /tmp/v3122patch
-          echo '--- files ---'
-          find /tmp/v3122patch -type f -printf '%P\n' | sort
-          echo '--- key markers ---'
-          grep -R -n -m 3 '3.12.2\|__CBIL_CARROW__\|GestureBackNavigation\|UiDevice.swipe' /tmp/v3122patch || true
+          cat Cell-Biology-Android/v3122-patch/p*.b64 | base64 --decode > /tmp/cellbio-v3122-patch.xz
+          echo '010f87b9bc05f2e57852246aa3070878379fa1eb981bf861b3b4110705722216  /tmp/cellbio-v3122-patch.xz' | sha256sum -c -
+          xz -t /tmp/cellbio-v3122-patch.xz
+          xz -dc /tmp/cellbio-v3122-patch.xz > /tmp/cellbio-v3122-patch.payload
+          echo '--- payload type ---'
+          file /tmp/cellbio-v3122-patch.payload
+          echo '--- first 120 lines ---'
+          head -n 120 /tmp/cellbio-v3122-patch.payload
+          echo '--- marker scan ---'
+          grep -n -m 30 '3.12.2\|__CBIL_CARROW__\|UiDevice.swipe\|MainActivitySmokeTest\|build.gradle' /tmp/cellbio-v3122-patch.payload || true
