@@ -1,0 +1,90 @@
+name: Cell Biology v3.12.3 Emulator-Only Gate
+
+on:
+  push:
+    branches: [ cell-biology-v3.12.3-emulator-only ]
+    paths:
+      - '.github/workflows/cell-biology-v3123-emulator-only.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  QT_QPA_PLATFORM: offscreen
+  SOURCE_RUN_ID: '34357706279'
+
+jobs:
+  emulator:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        api: [24, 26, 33, 35, 36]
+    steps:
+      - name: Checkout validation harness
+        uses: actions/checkout@v7
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install emulator runtime dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libpulse0 libxcb-cursor0
+
+      - name: Download verified v3.12.3 app APK
+        uses: actions/download-artifact@v4
+        with:
+          name: CellBiologyLearningHub-v3.12.3-release-gate-app
+          path: artifacts/app
+          github-token: ${{ github.token }}
+          repository: rameshgascngl-create/Zoology-and-Life-Sciences-Digital-Learning-Resources
+          run-id: ${{ env.SOURCE_RUN_ID }}
+
+      - name: Download verified v3.12.3 instrumentation APK
+        uses: actions/download-artifact@v4
+        with:
+          name: CellBiologyLearningHub-v3.12.3-release-gate-test
+          path: artifacts/test
+          github-token: ${{ github.token }}
+          repository: rameshgascngl-create/Zoology-and-Life-Sciences-Digital-Learning-Resources
+          run-id: ${{ env.SOURCE_RUN_ID }}
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Verify validation harness
+        run: |
+          echo '733f8f17b03bb06d1b23ffae2588cfb53ebf920c70ba625bd03bb67318e7b8b2  Cell-Biology-Android/v3123-final/validate_emulator.sh' | sha256sum -c -
+          chmod +x Cell-Biology-Android/v3123-final/validate_emulator.sh
+          bash -n Cell-Biology-Android/v3123-final/validate_emulator.sh
+
+      - name: Android ${{ matrix.api }} validation
+        uses: ReactiveCircus/android-emulator-runner@v2.38.0
+        with:
+          api-level: ${{ matrix.api }}
+          target: google_apis
+          arch: x86_64
+          profile: Nexus 6
+          emulator-boot-timeout: 600
+          disable-animations: true
+          emulator-options: -no-window -no-snapshot -noaudio -no-boot-anim -camera-back none -gpu swiftshader_indirect -no-metrics
+          script: bash Cell-Biology-Android/v3123-final/validate_emulator.sh ${{ matrix.api }}
+
+      - name: Upload API ${{ matrix.api }} evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: CellBiology-v3.12.3-emulator-only-api-${{ matrix.api }}
+          path: validation-output
+          if-no-files-found: ignore
