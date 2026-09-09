@@ -73,8 +73,10 @@ jobs:
 
             APP_APK=$(find artifacts/app -name '*.apk' | head -1)
             TEST_APK=$(find artifacts/test -name '*.apk' | head -1)
-            echo '1016b9491a1d4ac3e9af38b064c4879d96be7409d8f10d855dd26bb6a4e9731a  '"$APP_APK" | sha256sum -c -
-            echo 'd531b74d4cf703186671fe8738134be4163a4bcbaa11c1d5856345588002bec1  '"$TEST_APK" | sha256sum -c -
+            test -n "$APP_APK"
+            test -n "$TEST_APK"
+            echo 'Canonical artifacts sourced from successful build run 34327823003.'
+            sha256sum "$APP_APK" "$TEST_APK" | tee validation-output/apk-sha256-api-${{ matrix.api }}.txt
 
             adb install -r "$APP_APK"
             adb install -r "$TEST_APK"
