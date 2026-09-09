@@ -19,22 +19,31 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Reconstruct base v3.12.1 source
+      - name: Reconstruct audited baseline and v3.12.2 diff
         run: |
           test "$(find Cell-Biology-Android/source-parts -maxdepth 1 -name 'part-*.b64' | wc -l)" -eq 18
           cat Cell-Biology-Android/source-parts/part-*.b64 | base64 --decode > /tmp/cellbio-v3121.tar.xz
           echo 'c33c32242d9fffeff167f19f073d8335292eba3f042b199ad2fc055fd2cdfe0c  /tmp/cellbio-v3121.tar.xz' | sha256sum -c -
-
-      - name: Reconstruct and identify v3.12.2 patch
-        run: |
           test "$(find Cell-Biology-Android/v3122-patch -maxdepth 1 -name 'p*.b64' | wc -l)" -eq 5
           cat Cell-Biology-Android/v3122-patch/p*.b64 | base64 --decode > /tmp/cellbio-v3122-patch.xz
           echo '010f87b9bc05f2e57852246aa3070878379fa1eb981bf861b3b4110705722216  /tmp/cellbio-v3122-patch.xz' | sha256sum -c -
-          xz -t /tmp/cellbio-v3122-patch.xz
-          xz -dc /tmp/cellbio-v3122-patch.xz > /tmp/cellbio-v3122-patch.payload
-          echo '--- payload type ---'
-          file /tmp/cellbio-v3122-patch.payload
-          echo '--- first 120 lines ---'
-          head -n 120 /tmp/cellbio-v3122-patch.payload
-          echo '--- marker scan ---'
-          grep -n -m 30 '3.12.2\|__CBIL_CARROW__\|UiDevice.swipe\|MainActivitySmokeTest\|build.gradle' /tmp/cellbio-v3122-patch.payload || true
+          xz -dc /tmp/cellbio-v3122-patch.xz > /tmp/cellbio-v3122.patch
+          file /tmp/cellbio-v3122.patch
+          echo '--- files changed by canonical diff ---'
+          grep '^diff --git ' /tmp/cellbio-v3122.patch
+
+      - name: Apply v3.12.2 diff cleanly
+        run: |
+          rm -rf /tmp/work && mkdir /tmp/work
+          tar -xJf /tmp/cellbio-v3121.tar.xz -C /tmp/work
+          PROJECT=/tmp/work/CellBiologyAndroid-v3.12.1
+          cd "$PROJECT"
+          patch --dry-run -p1 < /tmp/cellbio-v3122.patch
+          patch -p1 < /tmp/cellbio-v3122.patch
+          grep -q 'versionName = "3.12.2"' app/build.gradle.kts
+          grep -q '__CBIL_CARROW__' app/src/main/assets/www/index.html
+          ! grep -q 'All 26 Diagram Library entries' app/src/main/assets/www/index.html
+          echo '--- instrumentation methods ---'
+          grep -R '^    public void ' app/src/androidTest/java || true
+          echo '--- native Back implementation ---'
+          grep -n 'registerBackHandler\|onBackPressed\|OnBackInvoked' app/src/main/java/in/gov/tn/gascngl/zoology/cellbiology/MainActivity.java || true
