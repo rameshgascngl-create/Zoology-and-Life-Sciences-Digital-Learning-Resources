@@ -26,7 +26,7 @@ jobs:
         run: |
           set -euo pipefail
           PREP='Cell-Biology-Android/v3123-final/prepare_v3123.sh'
-          test "$(git hash-object "$PREP")" = '17d8e4d4afe6fca9e30823398d1a12e7fd1c546c'
+          test "$(git hash-object "$PREP")" = '1a14d7ce2453a557ab14d4f17c039186d0867af2'
           sha256sum "$PREP"
           chmod +x "$PREP"
           bash -n "$PREP"
