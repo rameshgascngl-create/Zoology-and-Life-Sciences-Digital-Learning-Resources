@@ -1,8 +1,8 @@
 name: Cell Biology v3.12.3 Release Gate
 
 on:
-  pull_request:
-    branches: [ main ]
+  push:
+    branches: [ cell-biology-v3.12.3-release-gate ]
     paths:
       - 'Cell-Biology-Android/**'
       - '.github/workflows/cell-biology-v3123-release-gate.yml'
