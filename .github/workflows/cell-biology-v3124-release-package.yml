@@ -69,12 +69,15 @@ jobs:
           AAB=$(find app/build/outputs/bundle/release -name '*.aab' -print -quit)
           test -n "$APK"
           test -n "$AAB"
-          aapt dump badging "$APK" | tee release-badging.txt
+          BT="$ANDROID_HOME/build-tools/36.0.0"
+          test -x "$BT/aapt"
+          test -x "$BT/apksigner"
+          "$BT/aapt" dump badging "$APK" | tee release-badging.txt
           grep -q "package: name='in.gov.tn.gascngl.zoology.cellbiology'" release-badging.txt
           grep -q "versionCode='31204'" release-badging.txt
           grep -q "versionName='3.12.4'" release-badging.txt
           sha256sum "$APK" "$AAB" | tee release-sha256.txt
-          if apksigner verify "$APK"; then
+          if "$BT/apksigner" verify "$APK"; then
             echo 'Unexpected: release APK is signed' >&2
             exit 1
           else
