@@ -1,0 +1,37 @@
+name: Export Android Build Tools 36 Signing Tools
+
+on:
+  push:
+    branches: [ cell-biology-v3.12.4-icon ]
+    paths:
+      - '.github/workflows/export-android-build-tools.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+      - name: Install Build Tools 36.0.0
+        run: sdkmanager "build-tools;36.0.0"
+      - name: Stage signing tools
+        run: |
+          set -euo pipefail
+          mkdir -p signing-tools
+          cp -a "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" signing-tools/
+          cp -a "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" signing-tools/
+          cp -a "$ANDROID_SDK_ROOT/build-tools/36.0.0/lib" signing-tools/
+          sha256sum signing-tools/apksigner signing-tools/zipalign signing-tools/lib/apksigner.jar > signing-tools/SHA256SUMS.txt
+      - name: Upload signing tools
+        uses: actions/upload-artifact@v7
+        with:
+          name: android-build-tools-36-signing
+          path: signing-tools
+          compression-level: 0
+          if-no-files-found: error
