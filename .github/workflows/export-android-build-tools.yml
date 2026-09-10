@@ -27,11 +27,12 @@ jobs:
           cp -a "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" signing-tools/
           cp -a "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" signing-tools/
           cp -a "$ANDROID_SDK_ROOT/build-tools/36.0.0/lib" signing-tools/
-          sha256sum signing-tools/apksigner signing-tools/zipalign signing-tools/lib/apksigner.jar > signing-tools/SHA256SUMS.txt
+          cp -a "$ANDROID_SDK_ROOT/build-tools/36.0.0/lib64" signing-tools/
+          sha256sum signing-tools/apksigner signing-tools/zipalign signing-tools/lib/apksigner.jar signing-tools/lib64/libc++.so > signing-tools/SHA256SUMS.txt
       - name: Upload signing tools
         uses: actions/upload-artifact@v7
         with:
-          name: android-build-tools-36-signing
+          name: android-build-tools-36-signing-full
           path: signing-tools
           compression-level: 0
           if-no-files-found: error
