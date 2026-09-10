@@ -1,4 +1,4 @@
-name: Cell Biology v3.12.4 Icon Build
+name: Cell Biology v3.12.4 Icon Release Gate
 
 on:
   push:
@@ -10,11 +10,15 @@ on:
 
 permissions:
   contents: read
+  actions: read
+
+env:
+  QT_QPA_PLATFORM: offscreen
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 45
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -59,24 +63,33 @@ jobs:
         with:
           gradle-version: '9.6.0'
 
-      - name: Unit test, lint and build APK
+      - name: Unit test, lint and build app plus instrumentation APKs
         working-directory: Cell-Biology-Android/work-v3123/CellBiologyAndroid-v3.12.3
-        run: gradle --no-daemon :app:testDebugUnitTest :app:lintDebug :app:assembleDebug --stacktrace
+        run: gradle --no-daemon :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleDebugAndroidTest --stacktrace
 
-      - name: Verify APK contains generated icon resources
+      - name: Verify APK contains generated icon resources and record hashes
         working-directory: Cell-Biology-Android/work-v3123/CellBiologyAndroid-v3.12.3
         run: |
           set -euo pipefail
           APK='app/build/outputs/apk/debug/app-debug.apk'
+          TESTAPK='app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk'
           unzip -l "$APK" | tee apk-file-list.txt
           unzip -l "$APK" | grep -E 'cell_app_icon|ic_launcher' >/dev/null
-          sha256sum "$APK" | tee apk-sha256.txt
+          sha256sum "$APK" "$TESTAPK" | tee apk-sha256.txt
 
-      - name: Upload v3.12.4 APK
+      - name: Upload v3.12.4 app APK
         uses: actions/upload-artifact@v7
         with:
-          name: CellBiologyLearningHub-v3.12.4-new-icon-apk
+          name: CellBiologyLearningHub-v3.12.4-new-icon-app
           path: Cell-Biology-Android/work-v3123/CellBiologyAndroid-v3.12.3/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          compression-level: 0
+
+      - name: Upload v3.12.4 instrumentation APK
+        uses: actions/upload-artifact@v7
+        with:
+          name: CellBiologyLearningHub-v3.12.4-new-icon-test
+          path: Cell-Biology-Android/work-v3123/CellBiologyAndroid-v3.12.3/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
           if-no-files-found: error
           compression-level: 0
 
@@ -89,4 +102,72 @@ jobs:
             Cell-Biology-Android/work-v3123/CellBiologyAndroid-v3.12.3/apk-sha256.txt
             Cell-Biology-Android/work-v3123/CellBiologyAndroid-v3.12.3/apk-file-list.txt
             Cell-Biology-Android/work-v3123/CellBiologyAndroid-v3.12.3/app/build/reports/lint-results-debug.html
+          if-no-files-found: ignore
+
+  emulator:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        api: [24, 26, 33, 35, 36]
+    steps:
+      - name: Checkout validation harness
+        uses: actions/checkout@v7
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install emulator runtime dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libpulse0 libxcb-cursor0
+
+      - name: Download v3.12.4 app APK
+        uses: actions/download-artifact@v4
+        with:
+          name: CellBiologyLearningHub-v3.12.4-new-icon-app
+          path: artifacts/app
+
+      - name: Download v3.12.4 instrumentation APK
+        uses: actions/download-artifact@v4
+        with:
+          name: CellBiologyLearningHub-v3.12.4-new-icon-test
+          path: artifacts/test
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Verify validation harness
+        run: |
+          echo '733f8f17b03bb06d1b23ffae2588cfb53ebf920c70ba625bd03bb67318e7b8b2  Cell-Biology-Android/v3123-final/validate_emulator.sh' | sha256sum -c -
+          chmod +x Cell-Biology-Android/v3123-final/validate_emulator.sh
+          bash -n Cell-Biology-Android/v3123-final/validate_emulator.sh
+
+      - name: Android ${{ matrix.api }} validation
+        uses: ReactiveCircus/android-emulator-runner@v2.38.0
+        with:
+          api-level: ${{ matrix.api }}
+          target: google_apis
+          arch: x86_64
+          profile: Nexus 6
+          emulator-boot-timeout: 600
+          disable-animations: true
+          emulator-options: -no-window -no-snapshot -noaudio -no-boot-anim -camera-back none -gpu swiftshader_indirect -no-metrics
+          script: bash Cell-Biology-Android/v3123-final/validate_emulator.sh ${{ matrix.api }}
+
+      - name: Upload API ${{ matrix.api }} evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: CellBiology-v3.12.4-new-icon-api-${{ matrix.api }}
+          path: validation-output
           if-no-files-found: ignore
