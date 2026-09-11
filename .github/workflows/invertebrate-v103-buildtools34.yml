@@ -1,0 +1,36 @@
+name: Invertebrate Lab v1.0.3 Build Tools 34
+
+on:
+  push:
+    branches: [ invertebrate-lab-v1.0.3-apk-build ]
+    paths:
+      - '.github/workflows/invertebrate-v103-buildtools34.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: android-actions/setup-android@v4
+      - name: Install and stage Build Tools 34.0.0
+        run: |
+          set -euo pipefail
+          sdkmanager "build-tools;34.0.0"
+          mkdir -p /tmp/buildtools34
+          cp -a "$ANDROID_SDK_ROOT/build-tools/34.0.0/." /tmp/buildtools34/
+          tar --zstd -cf /tmp/buildtools34.tar.zst -C /tmp buildtools34
+          sha256sum /tmp/buildtools34.tar.zst > /tmp/buildtools34.sha256
+      - name: Upload Build Tools 34
+        uses: actions/upload-artifact@v7
+        with:
+          name: invertebrate-v103-buildtools34
+          path: |
+            /tmp/buildtools34.tar.zst
+            /tmp/buildtools34.sha256
+          compression-level: 0
+          if-no-files-found: error
