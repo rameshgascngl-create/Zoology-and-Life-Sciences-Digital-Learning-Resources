@@ -1,0 +1,137 @@
+name: Invertebrate Lab v1.0.3 Builder Kit
+
+on:
+  push:
+    branches: [ invertebrate-lab-v1.0.3-apk-build ]
+    paths:
+      - '.github/workflows/invertebrate-v103-builder-kit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export-builder-kit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+
+      - name: Install Android API 36
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools"
+
+      - name: Set up Gradle 8.9
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: '8.9'
+
+      - name: Resolve exact project dependencies
+        run: |
+          set -euo pipefail
+          S=/tmp/invertebrate-stub
+          mkdir -p "$S/app/src/main/java/com/gasczoology/invertebratelab"
+          mkdir -p "$S/app/src/main/res/values"
+          cat > "$S/settings.gradle.kts" <<'EOF'
+          pluginManagement {
+              repositories { google(); mavenCentral(); gradlePluginPortal() }
+          }
+          dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+              repositories { google(); mavenCentral() }
+          }
+          rootProject.name = "InvertebrateLab"
+          include(":app")
+          EOF
+          cat > "$S/build.gradle.kts" <<'EOF'
+          plugins {
+              id("com.android.application") version "8.7.3" apply false
+              id("org.jetbrains.kotlin.android") version "2.0.21" apply false
+          }
+          EOF
+          cat > "$S/gradle.properties" <<'EOF'
+          org.gradle.jvmargs=-Xmx2g -Dfile.encoding=UTF-8
+          android.useAndroidX=true
+          kotlin.code.style=official
+          EOF
+          cat > "$S/app/build.gradle.kts" <<'EOF'
+          plugins {
+              id("com.android.application")
+              id("org.jetbrains.kotlin.android")
+          }
+          android {
+              namespace = "com.gasczoology.invertebratelab"
+              compileSdk = 36
+              defaultConfig {
+                  applicationId = "com.gasczoology.invertebratelab"
+                  minSdk = 24
+                  targetSdk = 36
+                  versionCode = 103
+                  versionName = "1.0.3"
+              }
+              compileOptions {
+                  sourceCompatibility = JavaVersion.VERSION_17
+                  targetCompatibility = JavaVersion.VERSION_17
+              }
+              kotlinOptions { jvmTarget = "17" }
+          }
+          dependencies {
+              implementation("androidx.webkit:webkit:1.12.1")
+              implementation("androidx.activity:activity-ktx:1.9.3")
+          }
+          EOF
+          cat > "$S/app/src/main/AndroidManifest.xml" <<'EOF'
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android"><application android:theme="@style/AppTheme"><activity android:name=".MainActivity" android:exported="true"><intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter></activity></application></manifest>
+          EOF
+          cat > "$S/app/src/main/res/values/styles.xml" <<'EOF'
+          <resources><style name="AppTheme" parent="android:style/Theme.Material.Light.NoActionBar"/></resources>
+          EOF
+          cat > "$S/app/src/main/java/com/gasczoology/invertebratelab/MainActivity.kt" <<'EOF'
+          package com.gasczoology.invertebratelab
+          import android.os.Bundle
+          import androidx.activity.ComponentActivity
+          class MainActivity : ComponentActivity() { override fun onCreate(savedInstanceState: Bundle?) { super.onCreate(savedInstanceState) } }
+          EOF
+          cd "$S"
+          gradle --no-daemon :app:assembleDebug --stacktrace
+
+      - name: Stage portable builder kit
+        run: |
+          set -euo pipefail
+          KIT=/tmp/android-builder-kit
+          mkdir -p "$KIT/android-sdk/platforms" "$KIT/android-sdk/build-tools" "$KIT/android-sdk/platform-tools" "$KIT/gradle-home" "$KIT/gradle-dist"
+          cp -a "$ANDROID_SDK_ROOT/platforms/android-36" "$KIT/android-sdk/platforms/"
+          cp -a "$ANDROID_SDK_ROOT/build-tools/36.0.0" "$KIT/android-sdk/build-tools/"
+          cp -a "$ANDROID_SDK_ROOT/platform-tools/." "$KIT/android-sdk/platform-tools/"
+          cp -a "$HOME/.gradle/caches" "$KIT/gradle-home/"
+          if [ -d "$HOME/.gradle/native" ]; then cp -a "$HOME/.gradle/native" "$KIT/gradle-home/"; fi
+          G=$(readlink -f "$(command -v gradle)")
+          GROOT=$(cd "$(dirname "$G")/.." && pwd)
+          cp -a "$GROOT/." "$KIT/gradle-dist/"
+          printf 'Gradle: '; gradle --version | grep '^Gradle '
+          printf 'SDK: '; ls "$KIT/android-sdk/platforms"
+          printf 'Build tools: '; ls "$KIT/android-sdk/build-tools"
+          du -sh "$KIT"/*
+          cd /tmp
+          tar --zstd -cf android-builder-kit-v103.tar.zst android-builder-kit
+          sha256sum android-builder-kit-v103.tar.zst > android-builder-kit-v103.sha256
+          ls -lh android-builder-kit-v103.tar.zst
+
+      - name: Upload builder kit
+        uses: actions/upload-artifact@v7
+        with:
+          name: invertebrate-v103-android-builder-kit
+          path: |
+            /tmp/android-builder-kit-v103.tar.zst
+            /tmp/android-builder-kit-v103.sha256
+          compression-level: 0
+          if-no-files-found: error
