@@ -39,12 +39,9 @@ jobs:
         run: |
           set -euo pipefail
           S=/tmp/invertebrate-stub
-          mkdir -p "$S/app/src/main/java/com/gasczoology/invertebratelab"
-          mkdir -p "$S/app/src/main/res/values"
+          mkdir -p "$S/app/src/main/java/com/gasczoology/invertebratelab" "$S/app/src/main/res/values"
           cat > "$S/settings.gradle.kts" <<'EOF'
-          pluginManagement {
-              repositories { google(); mavenCentral(); gradlePluginPortal() }
-          }
+          pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }
           dependencyResolutionManagement {
               repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
               repositories { google(); mavenCentral() }
@@ -64,10 +61,7 @@ jobs:
           kotlin.code.style=official
           EOF
           cat > "$S/app/build.gradle.kts" <<'EOF'
-          plugins {
-              id("com.android.application")
-              id("org.jetbrains.kotlin.android")
-          }
+          plugins { id("com.android.application"); id("org.jetbrains.kotlin.android") }
           android {
               namespace = "com.gasczoology.invertebratelab"
               compileSdk = 36
@@ -117,21 +111,35 @@ jobs:
           G=$(readlink -f "$(command -v gradle)")
           GROOT=$(cd "$(dirname "$G")/.." && pwd)
           cp -a "$GROOT/." "$KIT/gradle-dist/"
-          printf 'Gradle: '; gradle --version | grep '^Gradle '
-          printf 'SDK: '; ls "$KIT/android-sdk/platforms"
-          printf 'Build tools: '; ls "$KIT/android-sdk/build-tools"
-          du -sh "$KIT"/*
           cd /tmp
           tar --zstd -cf android-builder-kit-v103.tar.zst android-builder-kit
           sha256sum android-builder-kit-v103.tar.zst > android-builder-kit-v103.sha256
-          ls -lh android-builder-kit-v103.tar.zst
+          split -b 350M -d -a 2 android-builder-kit-v103.tar.zst android-builder-kit-v103.part-
+          sha256sum android-builder-kit-v103.part-* > android-builder-kit-v103-parts.sha256
+          ls -lh android-builder-kit-v103.tar.zst android-builder-kit-v103.part-*
 
-      - name: Upload builder kit
+      - name: Upload builder kit part 00
         uses: actions/upload-artifact@v7
         with:
-          name: invertebrate-v103-android-builder-kit
+          name: invertebrate-v103-builder-part-00
+          path: /tmp/android-builder-kit-v103.part-00
+          compression-level: 0
+          if-no-files-found: error
+
+      - name: Upload builder kit part 01
+        uses: actions/upload-artifact@v7
+        with:
+          name: invertebrate-v103-builder-part-01
+          path: /tmp/android-builder-kit-v103.part-01
+          compression-level: 0
+          if-no-files-found: error
+
+      - name: Upload builder kit checksums
+        uses: actions/upload-artifact@v7
+        with:
+          name: invertebrate-v103-builder-checksums
           path: |
-            /tmp/android-builder-kit-v103.tar.zst
             /tmp/android-builder-kit-v103.sha256
+            /tmp/android-builder-kit-v103-parts.sha256
           compression-level: 0
           if-no-files-found: error
