@@ -1,0 +1,617 @@
+name: Environmental Studies v1.3.6 Production Gate
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - release/environmental-studies-v1.3.6-production-correction
+      - environmental-studies-v1.3.6-production
+    paths:
+      - Environmental-Studies-Android-v1.3.6-BETA-SOURCE.zip
+      - .release/environmental-studies-v1.3.6/**
+      - docs/environmental-studies/v1.3.6-production-baseline.md
+      - docs/environmental-studies/v1.3.6-academic-payload-sha256.txt
+      - .github/workflows/environmental-studies-v1.3.6-production.yml
+  pull_request:
+    branches:
+      - environmental-studies-v1.3.6-production
+    paths:
+      - Environmental-Studies-Android-v1.3.6-BETA-SOURCE.zip
+      - .release/environmental-studies-v1.3.6/**
+      - docs/environmental-studies/v1.3.6-production-baseline.md
+      - docs/environmental-studies/v1.3.6-academic-payload-sha256.txt
+      - .github/workflows/environmental-studies-v1.3.6-production.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: environmental-studies-v1.3.6-production-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  SOURCE_ZIP: Environmental-Studies-Android-v1.3.6-BETA-SOURCE.zip
+  SOURCE_SHA256: 7be472b7ec0c8e5724363467e0f6c898441b9d4f0475fa1ac958d27f835d0c61
+  FROZEN_APK_SHA256: 837615d41120d1cb706895963e35e52d6a0acd75a63f608d0990b6278c68490f
+  ACADEMIC_MANIFEST_SHA256: 755669416faa8415c6fee68f384f85e41b8c1f01e8ece37d53003dc966654178
+  BUILD_DIR: build-v136-production
+  PAYLOAD_DIR: payload-v136-production
+  RELEASE_PAYLOAD_ZIP: Environmental-Studies-Android-v1.3.6-RELEASE-PAYLOAD.zip
+  RELEASE_PAYLOAD_METADATA: release-payload-metadata.txt
+  VALIDATION_ARTIFACT: Environmental-Studies-v1.3.6-PRODUCTION-VALIDATION
+  BUILD_TOOLS_VERSION: 36.0.0
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Verify frozen source archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "$SOURCE_SHA256  $SOURCE_ZIP" | sha256sum -c -
+          test ! -e "$BUILD_DIR"
+          unzip -q "$SOURCE_ZIP" -d "$BUILD_DIR"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools'
+
+      - name: Install required Android SDK packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdkmanager 'platforms;android-36' "build-tools;$BUILD_TOOLS_VERSION"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+
+      - name: Verify exact approved source before release patch
+        working-directory: ${{ env.BUILD_DIR }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check -r tools/requirements.txt
+          python tools/run_source_checks.py
+          python tools/sync_version.py --check
+          python tools/verify_content_integrity.py
+          python tools/test_verifier.py
+          python tools/test_release_reporting.py
+          node tools/test_reader.cjs
+
+      - name: Rendered reader regression tests against v1.3.5 baseline
+        working-directory: ${{ env.BUILD_DIR }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check -r tools/requirements-layout.txt
+          python -m playwright install --with-deps chromium
+          sudo apt-get update -qq
+          sudo apt-get install -y fonts-noto-core
+          rm -rf ../layout-baseline-v135
+          unzip -q ../Environmental-Studies-Android-v1.3.5-BETA-SOURCE.zip -d ../layout-baseline-v135
+          python tools/test_layout.py --baseline-assets ../layout-baseline-v135/app/src/main/assets
+
+      - name: Prove academic payload matches frozen APK byte-for-byte
+        working-directory: ${{ env.BUILD_DIR }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib
+          root = Path('app/src/main/assets')
+          out = Path('verification/academic-payload-sha256.txt')
+          lines=[]
+          for path in sorted(p for p in root.rglob('*') if p.is_file()):
+              digest=hashlib.sha256(path.read_bytes()).hexdigest()
+              rel='assets/' + path.relative_to(root).as_posix()
+              lines.append(f'{digest}  {rel}')
+          out.write_text('\n'.join(lines)+'\n', encoding='utf-8')
+          print(f'frozen academic files={len(lines)}')
+          print(f'manifest sha256={hashlib.sha256(out.read_bytes()).hexdigest()}')
+          PY
+          cmp verification/academic-payload-sha256.txt ../docs/environmental-studies/v1.3.6-academic-payload-sha256.txt
+          test "$(sha256sum verification/academic-payload-sha256.txt | awk '{print $1}')" = "$ACADEMIC_MANIFEST_SHA256"
+          echo 'ACADEMIC PAYLOAD INTEGRITY: PASS'
+
+      - name: Apply production-only release-engineering patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          python .release/environmental-studies-v1.3.6/apply_production_patch.py "$BUILD_DIR"
+
+      - name: Freeze exact deterministic production release payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf "$PAYLOAD_DIR"
+          unzip -q "$SOURCE_ZIP" -d "$PAYLOAD_DIR"
+          python .release/environmental-studies-v1.3.6/apply_production_patch.py "$PAYLOAD_DIR"
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib, os, re, zipfile
+
+          root=Path(os.environ['PAYLOAD_DIR'])
+          out=Path(os.environ['RELEASE_PAYLOAD_ZIP'])
+          metadata=Path(os.environ['RELEASE_PAYLOAD_METADATA'])
+
+          assets=root/'app/src/main/assets'
+          lines=[]
+          for path in sorted(p for p in assets.rglob('*') if p.is_file()):
+              digest=hashlib.sha256(path.read_bytes()).hexdigest()
+              rel='assets/' + path.relative_to(assets).as_posix()
+              lines.append(f'{digest}  {rel}')
+          academic_sha=hashlib.sha256(('\n'.join(lines)+'\n').encode()).hexdigest()
+          expected='755669416faa8415c6fee68f384f85e41b8c1f01e8ece37d53003dc966654178'
+          if academic_sha != expected:
+              raise SystemExit(f'FAIL: release payload academic manifest {academic_sha} != {expected}')
+
+          gradle=(root/'app/build.gradle').read_text(encoding='utf-8')
+          for needle in [
+              "applicationId 'edu.gascnagercoil.environmentalsciences'",
+              "compileSdk 36", "minSdk 24", "targetSdk 36",
+              "versionCode 10306", "versionName '1.3.6'",
+              "enableV2Signing true", "enableV3Signing true", "debuggable false",
+          ]:
+              if needle not in gradle:
+                  raise SystemExit(f'FAIL: release payload Gradle identity missing: {needle}')
+
+          manifest=(root/'app/src/main/AndroidManifest.xml').read_text(encoding='utf-8')
+          for needle in ['android:allowBackup="false"', 'android:usesCleartextTraffic="false"']:
+              if needle not in manifest:
+                  raise SystemExit(f'FAIL: release manifest missing {needle}')
+          for needle in ['<uses-permission', 'android:debuggable="true"', 'android:dataExtractionRules=', 'android:fullBackupContent=']:
+              if needle in manifest:
+                  raise SystemExit(f'FAIL: forbidden release manifest state: {needle}')
+
+          for path in assets.rglob('*'):
+              if path.is_file() and re.search(r'https?://', path.read_text(encoding='utf-8', errors='ignore')):
+                  raise SystemExit(f'FAIL: unexpected remote URL in frozen web asset: {path.relative_to(root)}')
+
+          urls=[]
+          for path in (root/'app/src/main/java').rglob('*.java'):
+              urls.extend(re.findall(r'https?://[^"\s]+', path.read_text(encoding='utf-8', errors='ignore')))
+          bad=[u for u in urls if not u.startswith('https://appassets.androidplatform.net/')]
+          if bad:
+              raise SystemExit(f'FAIL: unexpected remote Java URL(s): {bad}')
+
+          if out.exists():
+              out.unlink()
+          with zipfile.ZipFile(out, 'w', compression=zipfile.ZIP_DEFLATED, compresslevel=9) as z:
+              for path in sorted((p for p in root.rglob('*') if p.is_file()), key=lambda p:p.relative_to(root).as_posix()):
+                  info=zipfile.ZipInfo(path.relative_to(root).as_posix(), date_time=(1980,1,1,0,0,0))
+                  info.compress_type=zipfile.ZIP_DEFLATED
+                  info.create_system=3
+                  info.external_attr=(0o100644 << 16)
+                  z.writestr(info, path.read_bytes())
+
+          payload_sha=hashlib.sha256(out.read_bytes()).hexdigest()
+          payload_size=out.stat().st_size
+          metadata.write_text(
+              f'repository=rameshgascngl-create/Zoology-and-Life-Sciences-Digital-Learning-Resources\n'
+              f'commit={os.environ["GITHUB_SHA"]}\n'
+              f'filename={out.name}\nbytes={payload_size}\nsha256={payload_sha}\n'
+              f'applicationId=edu.gascnagercoil.environmentalsciences\n'
+              f'versionName=1.3.6\nversionCode=10306\ncompileSdk=36\ntargetSdk=36\nminSdk=24\n'
+              f'academicPayloadManifestSha256={academic_sha}\nnetworkPermission=absent\nremoteWebDependency=absent\n',
+              encoding='utf-8'
+          )
+          print(metadata.read_text(), end='')
+          PY
+          rm -rf "$BUILD_DIR"
+          unzip -q "$RELEASE_PAYLOAD_ZIP" -d "$BUILD_DIR"
+          echo 'RELEASE PAYLOAD FREEZE: PASS'
+
+      - name: Build patched unsigned release candidate for validation
+        working-directory: ${{ env.BUILD_DIR }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle --no-daemon clean lint test assembleDebug assembleRelease bundleRelease
+          python tools/report_dex.py
+
+      - name: Verify patched unsigned release candidate
+        working-directory: ${{ env.BUILD_DIR }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find app/build/outputs/apk/release -maxdepth 1 -type f -name '*release*unsigned*.apk' | head -n 1)"
+          AAB="$(find app/build/outputs/bundle/release -maxdepth 1 -type f -name '*.aab' | head -n 1)"
+          test -n "$APK" && test -f "$APK"
+          test -n "$AAB" && test -f "$AAB"
+
+          AAPT="$ANDROID_SDK_ROOT/build-tools/$BUILD_TOOLS_VERSION/aapt"
+          APKANALYZER="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/apkanalyzer"
+
+          "$APKANALYZER" manifest print "$APK" > verification/production-candidate-manifest.xml
+          if grep -Fq 'android:debuggable="true"' verification/production-candidate-manifest.xml; then
+            echo 'FAIL: patched release candidate is debuggable.'
+            exit 1
+          fi
+          grep -Fq 'android:allowBackup="false"' verification/production-candidate-manifest.xml
+          grep -Fq 'android:usesCleartextTraffic="false"' verification/production-candidate-manifest.xml
+          if grep -Fq 'android:dataExtractionRules=' verification/production-candidate-manifest.xml; then
+            echo 'FAIL: dataExtractionRules remain active in production manifest.'
+            exit 1
+          fi
+          if grep -Fq 'android:fullBackupContent=' verification/production-candidate-manifest.xml; then
+            echo 'FAIL: fullBackupContent remains active in production manifest.'
+            exit 1
+          fi
+
+          "$AAPT" dump badging "$APK" > verification/production-candidate-badging.txt
+          "$AAPT" dump permissions "$APK" > verification/production-candidate-permissions.txt
+          grep -Fq "package: name='edu.gascnagercoil.environmentalsciences'" verification/production-candidate-badging.txt
+          grep -Fq "versionCode='10306'" verification/production-candidate-badging.txt
+          grep -Fq "versionName='1.3.6'" verification/production-candidate-badging.txt
+          grep -Fq "sdkVersion:'24'" verification/production-candidate-badging.txt
+          grep -Fq "targetSdkVersion:'36'" verification/production-candidate-badging.txt
+          if grep -Fq 'android.permission.INTERNET' verification/production-candidate-permissions.txt; then
+            echo 'FAIL: INTERNET permission detected.'
+            exit 1
+          fi
+          if grep -Eq '^uses-permission' verification/production-candidate-permissions.txt; then
+            echo 'FAIL: unexpected Android permission declared.'
+            cat verification/production-candidate-permissions.txt
+            exit 1
+          fi
+
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib, zipfile
+          root=Path('app/src/main/assets')
+          apk=next(Path('app/build/outputs/apk/release').glob('*release*unsigned*.apk'))
+          expected=[]
+          with zipfile.ZipFile(apk) as built:
+              for path in sorted(p for p in root.rglob('*') if p.is_file()):
+                  name='assets/' + path.relative_to(root).as_posix()
+                  if built.read(name) != path.read_bytes():
+                      raise SystemExit(f'FAIL: compiled asset differs: {name}')
+                  expected.append(name)
+              actual=sorted(n for n in built.namelist() if n.startswith('assets/') and not n.endswith('/'))
+              if actual != sorted(expected):
+                  raise SystemExit('FAIL: compiled APK asset inventory differs from frozen source')
+          print('PASS: compiled release candidate contains exact frozen academic assets')
+          print('candidate apk sha256=' + hashlib.sha256(apk.read_bytes()).hexdigest())
+          PY
+
+      - name: Upload validation evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: Environmental-Studies-v1.3.6-PRODUCTION-VALIDATION
+          if-no-files-found: error
+          retention-days: 30
+          path: |
+            ${{ env.RELEASE_PAYLOAD_ZIP }}
+            ${{ env.RELEASE_PAYLOAD_METADATA }}
+            ${{ env.BUILD_DIR }}/verification/academic-payload-sha256.txt
+            ${{ env.BUILD_DIR }}/verification/production-candidate-manifest.xml
+            ${{ env.BUILD_DIR }}/verification/production-candidate-badging.txt
+            ${{ env.BUILD_DIR }}/verification/production-candidate-permissions.txt
+            ${{ env.BUILD_DIR }}/verification/release-dex-report.json
+            ${{ env.BUILD_DIR }}/verification/layout/
+            ${{ env.BUILD_DIR }}/app/build/reports/
+
+  signed-release:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/environmental-studies-v1.3.6-production'
+    needs: validate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      ENVSCI_KEYSTORE_PASSWORD: ${{ secrets.ENVSCI_KEYSTORE_PASSWORD }}
+      ENVSCI_KEY_ALIAS: ${{ secrets.ENVSCI_KEY_ALIAS }}
+      ENVSCI_KEY_PASSWORD: ${{ secrets.ENVSCI_KEY_PASSWORD }}
+    steps:
+      - name: Require authoritative production branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = 'refs/heads/environmental-studies-v1.3.6-production' || {
+            echo 'Signed release is permitted only from environmental-studies-v1.3.6-production.'
+            exit 1
+          }
+
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Download exact validated production payload
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.VALIDATION_ARTIFACT }}
+          path: ${{ runner.temp }}/validated-production-source
+
+      - name: Verify and extract exact validated production payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          PAYLOAD="$RUNNER_TEMP/validated-production-source/$RELEASE_PAYLOAD_ZIP"
+          META="$RUNNER_TEMP/validated-production-source/$RELEASE_PAYLOAD_METADATA"
+          test -f "$PAYLOAD" && test -f "$META"
+          PAYLOAD_SHA="$(sha256sum "$PAYLOAD" | awk '{print $1}')"
+          PAYLOAD_SIZE="$(stat -c%s "$PAYLOAD")"
+          grep -Fqx "sha256=$PAYLOAD_SHA" "$META"
+          grep -Fqx "bytes=$PAYLOAD_SIZE" "$META"
+          grep -Fqx 'applicationId=edu.gascnagercoil.environmentalsciences' "$META"
+          grep -Fqx 'versionName=1.3.6' "$META"
+          grep -Fqx 'versionCode=10306' "$META"
+          grep -Fqx 'compileSdk=36' "$META"
+          grep -Fqx 'targetSdk=36' "$META"
+          grep -Fqx 'minSdk=24' "$META"
+          test ! -e "$BUILD_DIR"
+          unzip -q "$PAYLOAD" -d "$BUILD_DIR"
+          echo "RELEASE_PAYLOAD_PATH=$PAYLOAD" >> "$GITHUB_ENV"
+          echo "RELEASE_PAYLOAD_SHA256=$PAYLOAD_SHA" >> "$GITHUB_ENV"
+          echo "RELEASE_PAYLOAD_SIZE=$PAYLOAD_SIZE" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools'
+
+      - name: Install required Android SDK packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdkmanager 'platforms;android-36' "build-tools;$BUILD_TOOLS_VERSION"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+
+      - name: Re-prove frozen academic payload in validated production source
+        working-directory: ${{ env.BUILD_DIR }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib
+          root=Path('app/src/main/assets')
+          out=Path('verification/academic-payload-sha256.txt')
+          lines=[]
+          for path in sorted(p for p in root.rglob('*') if p.is_file()):
+              digest=hashlib.sha256(path.read_bytes()).hexdigest()
+              rel='assets/' + path.relative_to(root).as_posix()
+              lines.append(f'{digest}  {rel}')
+          out.write_text('\n'.join(lines)+'\n', encoding='utf-8')
+          if hashlib.sha256(out.read_bytes()).hexdigest() != '755669416faa8415c6fee68f384f85e41b8c1f01e8ece37d53003dc966654178':
+              raise SystemExit('FAIL: academic payload manifest hash differs from frozen APK')
+          PY
+          cmp verification/academic-payload-sha256.txt ../docs/environmental-studies/v1.3.6-academic-payload-sha256.txt
+
+      - name: Restore permanent release keystore
+        shell: bash
+        env:
+          ENVSCI_KEYSTORE_BASE64: ${{ secrets.ENVSCI_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          test -n "$ENVSCI_KEYSTORE_BASE64" || { echo 'ENVSCI_KEYSTORE_BASE64 is missing.'; exit 1; }
+          test -n "$ENVSCI_KEYSTORE_PASSWORD" || { echo 'ENVSCI_KEYSTORE_PASSWORD is missing.'; exit 1; }
+          test -n "$ENVSCI_KEY_ALIAS" || { echo 'ENVSCI_KEY_ALIAS is missing.'; exit 1; }
+          test -n "$ENVSCI_KEY_PASSWORD" || { echo 'ENVSCI_KEY_PASSWORD is missing.'; exit 1; }
+          KEYSTORE_PATH="$RUNNER_TEMP/environmental-sciences-release.jks"
+          printf '%s' "$ENVSCI_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_PATH"
+          test -s "$KEYSTORE_PATH"
+          chmod 600 "$KEYSTORE_PATH"
+          echo "ENVSCI_KEYSTORE_PATH=$KEYSTORE_PATH" >> "$GITHUB_ENV"
+
+      - name: Clean signed production build
+        working-directory: ${{ env.BUILD_DIR }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle --no-daemon clean :app:lintRelease :app:assembleRelease :app:bundleRelease
+
+      - name: Remove temporary release keystore
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          if [ -n "${ENVSCI_KEYSTORE_PATH:-}" ] && [ -f "$ENVSCI_KEYSTORE_PATH" ]; then
+            shred -u "$ENVSCI_KEYSTORE_PATH" 2>/dev/null || rm -f "$ENVSCI_KEYSTORE_PATH"
+          fi
+
+      - name: Verify actual signed APK and AAB
+        working-directory: ${{ env.BUILD_DIR }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' ! -name '*unsigned*' | head -n 1)"
+          AAB="$(find app/build/outputs/bundle/release -maxdepth 1 -type f -name '*.aab' | head -n 1)"
+          test -n "$APK" && test -f "$APK" || { echo 'Signed release APK not found.'; exit 1; }
+          test -n "$AAB" && test -f "$AAB" || { echo 'Release AAB not found.'; exit 1; }
+
+          APKSIGNER="$ANDROID_SDK_ROOT/build-tools/$BUILD_TOOLS_VERSION/apksigner"
+          AAPT="$ANDROID_SDK_ROOT/build-tools/$BUILD_TOOLS_VERSION/aapt"
+          APKANALYZER="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/apkanalyzer"
+
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee verification/release-signing.txt
+          if grep -Fq 'CN=Android Debug' verification/release-signing.txt; then
+            echo 'FAIL: Android Debug certificate subject detected.'
+            exit 1
+          fi
+          if grep -Fqi 'cae3b314c592aba34d7a8b665e09893d92a28f58fdc9dc3098a16415eae30b22' verification/release-signing.txt; then
+            echo 'FAIL: known Environmental Studies debug certificate fingerprint detected.'
+            exit 1
+          fi
+          grep -Fq 'Verified using v2 scheme (APK Signature Scheme v2): true' verification/release-signing.txt
+          grep -Fq 'Verified using v3 scheme (APK Signature Scheme v3): true' verification/release-signing.txt
+
+          "$APKANALYZER" manifest print "$APK" > verification/release-manifest.xml
+          if grep -Fq 'android:debuggable="true"' verification/release-manifest.xml; then
+            echo 'FAIL: release APK is debuggable.'
+            exit 1
+          fi
+          grep -Fq 'android:allowBackup="false"' verification/release-manifest.xml
+          grep -Fq 'android:usesCleartextTraffic="false"' verification/release-manifest.xml
+          if grep -Fq 'android:dataExtractionRules=' verification/release-manifest.xml; then
+            echo 'FAIL: dataExtractionRules remain active in release manifest.'
+            exit 1
+          fi
+          if grep -Fq 'android:fullBackupContent=' verification/release-manifest.xml; then
+            echo 'FAIL: fullBackupContent remains active in release manifest.'
+            exit 1
+          fi
+
+          "$AAPT" dump badging "$APK" > verification/release-badging.txt
+          "$AAPT" dump permissions "$APK" > verification/release-permissions.txt
+          APP_ID="$(sed -n "s/^package: name='\([^']*\)'.*/\1/p" verification/release-badging.txt | head -n1)"
+          VERSION_CODE="$(sed -n "s/^package:.*versionCode='\([^']*\)'.*/\1/p" verification/release-badging.txt | head -n1)"
+          VERSION_NAME="$(sed -n "s/^package:.*versionName='\([^']*\)'.*/\1/p" verification/release-badging.txt | head -n1)"
+          MIN_SDK="$(sed -n "s/^sdkVersion:'\([^']*\)'.*/\1/p" verification/release-badging.txt | head -n1)"
+          TARGET_SDK="$(sed -n "s/^targetSdkVersion:'\([^']*\)'.*/\1/p" verification/release-badging.txt | head -n1)"
+          test "$APP_ID" = 'edu.gascnagercoil.environmentalsciences'
+          test "$VERSION_CODE" = '10306'
+          test "$VERSION_NAME" = '1.3.6'
+          test "$MIN_SDK" = '24'
+          test "$TARGET_SDK" = '36'
+          if grep -Fq 'android.permission.INTERNET' verification/release-permissions.txt; then
+            echo 'FAIL: INTERNET permission detected.'
+            exit 1
+          fi
+          if grep -Eq '^uses-permission' verification/release-permissions.txt; then
+            echo 'FAIL: unexpected Android permission declared.'
+            cat verification/release-permissions.txt
+            exit 1
+          fi
+
+          unzip -l "$APK" | grep -Fq 'assets/index.html'
+
+          python - <<'PY'
+          from pathlib import Path
+          import zipfile
+          root=Path('app/src/main/assets')
+          apk=next(p for p in Path('app/build/outputs/apk/release').glob('*.apk') if 'unsigned' not in p.name)
+          expected=[]
+          with zipfile.ZipFile(apk) as built:
+              for path in sorted(p for p in root.rglob('*') if p.is_file()):
+                  name='assets/' + path.relative_to(root).as_posix()
+                  if built.read(name) != path.read_bytes():
+                      raise SystemExit(f'FAIL: compiled release asset differs: {name}')
+                  expected.append(name)
+              actual=sorted(n for n in built.namelist() if n.startswith('assets/') and not n.endswith('/'))
+              if actual != sorted(expected):
+                  raise SystemExit('FAIL: signed APK asset inventory differs from frozen source')
+          print('ACADEMIC PAYLOAD INTEGRITY: PASS')
+          PY
+
+          grep -Fq 'Modular Book Edition v1.3.6' <(unzip -p "$APK" assets/index.html)
+          grep -Fq '"version": "1.3.6"' <(unzip -p "$APK" assets/book-catalog.json)
+
+          CERT_SUBJECT="$(sed -n 's/^Signer #1 certificate DN: //p' verification/release-signing.txt | head -n1)"
+          CERT_SHA256="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' verification/release-signing.txt | head -n1)"
+
+          mkdir -p dist
+          cp "$APK" dist/Environmental-Studies-v1.3.6-release.apk
+          cp "$AAB" dist/Environmental-Studies-v1.3.6-release.aab
+          cp verification/academic-payload-sha256.txt dist/academic-payload-sha256.txt
+          cp verification/release-signing.txt dist/release-signing.txt
+          cp verification/release-manifest.xml dist/release-manifest.xml
+          cp verification/release-badging.txt dist/release-badging.txt
+          cp verification/release-permissions.txt dist/release-permissions.txt
+          cp "$RELEASE_PAYLOAD_PATH" dist/"$RELEASE_PAYLOAD_ZIP"
+
+          APK_SHA="$(sha256sum dist/Environmental-Studies-v1.3.6-release.apk | awk '{print $1}')"
+          AAB_SHA="$(sha256sum dist/Environmental-Studies-v1.3.6-release.aab | awk '{print $1}')"
+          APK_SIZE="$(stat -c%s dist/Environmental-Studies-v1.3.6-release.apk)"
+          AAB_SIZE="$(stat -c%s dist/Environmental-Studies-v1.3.6-release.aab)"
+
+          {
+            echo "Repository: rameshgascngl-create/Zoology-and-Life-Sciences-Digital-Learning-Resources"
+            echo "Production branch: environmental-studies-v1.3.6-production"
+            echo "Source Git commit SHA: $GITHUB_SHA"
+            echo "Workflow: .github/workflows/environmental-studies-v1.3.6-production.yml"
+            echo "GitHub Actions run ID: $GITHUB_RUN_ID"
+            echo "Production release payload ZIP: $RELEASE_PAYLOAD_ZIP"
+            echo "Production release payload bytes: $RELEASE_PAYLOAD_SIZE"
+            echo "Production release payload SHA-256: $RELEASE_PAYLOAD_SHA256"
+            echo "Frozen beta source ZIP: $SOURCE_ZIP"
+            echo "Frozen beta source ZIP SHA-256: $SOURCE_SHA256"
+            echo "Audited beta APK SHA-256: $FROZEN_APK_SHA256"
+            echo "Academic payload manifest SHA-256: $ACADEMIC_MANIFEST_SHA256"
+            echo 'Academic payload integrity: PASS'
+            echo 'APK filename: Environmental-Studies-v1.3.6-release.apk'
+            echo "APK size: $APK_SIZE bytes"
+            echo "APK SHA-256: $APK_SHA"
+            echo 'AAB filename: Environmental-Studies-v1.3.6-release.aab'
+            echo "AAB size: $AAB_SIZE bytes"
+            echo "AAB SHA-256: $AAB_SHA"
+            echo "applicationId: $APP_ID"
+            echo "versionName: $VERSION_NAME"
+            echo "versionCode: $VERSION_CODE"
+            echo "minSdk: $MIN_SDK"
+            echo "targetSdk: $TARGET_SDK"
+            echo 'compileSdk: 36'
+            echo 'debuggable: false'
+            echo 'Compilation/build type: release'
+            echo 'WebView debugging: false (source hard-codes false)'
+            echo "Signing certificate Subject/DN: $CERT_SUBJECT"
+            echo "Signing certificate SHA-256: $CERT_SHA256"
+            echo 'APK Signature Scheme v2: true'
+            echo 'APK Signature Scheme v3: true'
+            echo 'INTERNET permission: absent'
+            echo 'Dangerous permissions: none declared'
+            echo 'allowBackup: false'
+            echo 'usesCleartextTraffic: false'
+            echo 'dataExtractionRules: inactive/absent from merged manifest'
+            echo 'fullBackupContent: inactive/absent from merged manifest'
+            echo 'assets/index.html present: yes'
+            echo 'Embedded/catalog version: 1.3.6'
+            echo 'Visible UI version: v1.3.6'
+            echo 'CLEAN RELEASE BUILD: PASS'
+            echo 'VERSION CONSISTENCY: PASS'
+            echo 'RELEASE SIGNING: PASS'
+            echo 'OFFLINE PAYLOAD: PASS'
+            echo 'ACADEMIC PAYLOAD INTEGRITY: PASS'
+            echo 'STATIC APK AUDIT: PASS'
+            echo 'DEVICE QA: NOT PERFORMED'
+          } > dist/release-evidence.txt
+          cat dist/release-evidence.txt
+
+      - name: Upload signed production release
+        uses: actions/upload-artifact@v4
+        with:
+          name: Environmental-Studies-v1.3.6-SIGNED-RELEASE
+          if-no-files-found: error
+          retention-days: 30
+          path: |
+            ${{ env.BUILD_DIR }}/dist/Environmental-Studies-v1.3.6-release.apk
+            ${{ env.BUILD_DIR }}/dist/Environmental-Studies-v1.3.6-release.aab
+            ${{ env.BUILD_DIR }}/dist/release-evidence.txt
+            ${{ env.BUILD_DIR }}/dist/academic-payload-sha256.txt
+            ${{ env.BUILD_DIR }}/dist/release-signing.txt
+            ${{ env.BUILD_DIR }}/dist/release-manifest.xml
+            ${{ env.BUILD_DIR }}/dist/release-badging.txt
+            ${{ env.BUILD_DIR }}/dist/release-permissions.txt
+            ${{ env.BUILD_DIR }}/dist/Environmental-Studies-Android-v1.3.6-RELEASE-PAYLOAD.zip
