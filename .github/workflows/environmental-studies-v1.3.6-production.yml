@@ -35,6 +35,10 @@ env:
   FROZEN_APK_SHA256: 837615d41120d1cb706895963e35e52d6a0acd75a63f608d0990b6278c68490f
   ACADEMIC_MANIFEST_SHA256: 755669416faa8415c6fee68f384f85e41b8c1f01e8ece37d53003dc966654178
   BUILD_DIR: build-v136-production
+  PAYLOAD_DIR: payload-v136-production
+  RELEASE_PAYLOAD_ZIP: Environmental-Studies-Android-v1.3.6-RELEASE-PAYLOAD.zip
+  RELEASE_PAYLOAD_METADATA: release-payload-metadata.txt
+  VALIDATION_ARTIFACT: Environmental-Studies-v1.3.6-PRODUCTION-VALIDATION
   BUILD_TOOLS_VERSION: 36.0.0
 
 jobs:
@@ -137,6 +141,105 @@ jobs:
           set -euo pipefail
           python .release/environmental-studies-v1.3.6/apply_production_patch.py "$BUILD_DIR"
 
+      - name: Freeze exact deterministic production release payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf "$PAYLOAD_DIR"
+          unzip -q "$SOURCE_ZIP" -d "$PAYLOAD_DIR"
+          python .release/environmental-studies-v1.3.6/apply_production_patch.py "$PAYLOAD_DIR"
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib, os, re, zipfile
+
+          root=Path(os.environ['PAYLOAD_DIR'])
+          out=Path(os.environ['RELEASE_PAYLOAD_ZIP'])
+          metadata=Path(os.environ['RELEASE_PAYLOAD_METADATA'])
+
+          assets=root/'app/src/main/assets'
+          lines=[]
+          for path in sorted(p for p in assets.rglob('*') if p.is_file()):
+              digest=hashlib.sha256(path.read_bytes()).hexdigest()
+              rel='assets/' + path.relative_to(assets).as_posix()
+              lines.append(f'{digest}  {rel}')
+          manifest_bytes=('\n'.join(lines)+'\n').encode()
+          academic_sha=hashlib.sha256(manifest_bytes).hexdigest()
+          expected='755669416faa8415c6fee68f384f85e41b8c1f01e8ece37d53003dc966654178'
+          if academic_sha != expected:
+              raise SystemExit(f'FAIL: release payload academic manifest {academic_sha} != {expected}')
+
+          gradle=(root/'app/build.gradle').read_text(encoding='utf-8')
+          required=[
+              "applicationId 'edu.gascnagercoil.environmentalsciences'",
+              "compileSdk 36", "minSdk 24", "targetSdk 36",
+              "versionCode 10306", "versionName '1.3.6'",
+              "enableV2Signing true", "enableV3Signing true",
+              "debuggable false",
+          ]
+          for needle in required:
+              if needle not in gradle:
+                  raise SystemExit(f'FAIL: release payload Gradle identity missing: {needle}')
+
+          android_manifest=(root/'app/src/main/AndroidManifest.xml').read_text(encoding='utf-8')
+          for needle in ['android:allowBackup="false"', 'android:usesCleartextTraffic="false"']:
+              if needle not in android_manifest:
+                  raise SystemExit(f'FAIL: release manifest missing {needle}')
+          forbidden=['<uses-permission', 'android:debuggable="true"', 'android:dataExtractionRules=', 'android:fullBackupContent=']
+          for needle in forbidden:
+              if needle in android_manifest:
+                  raise SystemExit(f'FAIL: forbidden release manifest state: {needle}')
+
+          for path in assets.rglob('*'):
+              if path.is_file():
+                  text=path.read_text(encoding='utf-8', errors='ignore')
+                  if re.search(r'https?://', text):
+                      raise SystemExit(f'FAIL: unexpected remote URL in frozen web asset: {path.relative_to(root)}')
+
+          java_root=root/'app/src/main/java'
+          urls=[]
+          for path in java_root.rglob('*.java'):
+              text=path.read_text(encoding='utf-8', errors='ignore')
+              urls.extend(re.findall(r'https?://[^"\s]+', text))
+          bad=[u for u in urls if not u.startswith('https://appassets.androidplatform.net/')]
+          if bad:
+              raise SystemExit(f'FAIL: unexpected remote Java URL(s): {bad}')
+
+          if out.exists():
+              out.unlink()
+          with zipfile.ZipFile(out, 'w', compression=zipfile.ZIP_DEFLATED, compresslevel=9) as z:
+              files=sorted((p for p in root.rglob('*') if p.is_file()), key=lambda p:p.relative_to(root).as_posix())
+              for path in files:
+                  rel=path.relative_to(root).as_posix()
+                  info=zipfile.ZipInfo(rel, date_time=(1980,1,1,0,0,0))
+                  info.compress_type=zipfile.ZIP_DEFLATED
+                  info.create_system=3
+                  info.external_attr=(0o100644 << 16)
+                  z.writestr(info, path.read_bytes())
+
+          payload_sha=hashlib.sha256(out.read_bytes()).hexdigest()
+          payload_size=out.stat().st_size
+          metadata.write_text(
+              f'repository=rameshgascngl-create/Zoology-and-Life-Sciences-Digital-Learning-Resources\n'
+              f'branch={os.environ.get("GITHUB_HEAD_REF") or os.environ.get("GITHUB_REF_NAME","")}\n'
+              f'commit={os.environ["GITHUB_SHA"]}\n'
+              f'filename={out.name}\n'
+              f'bytes={payload_size}\n'
+              f'sha256={payload_sha}\n'
+              f'applicationId=edu.gascnagercoil.environmentalsciences\n'
+              f'versionName=1.3.6\nversionCode=10306\n'
+              f'compileSdk=36\ntargetSdk=36\nminSdk=24\n'
+              f'academicPayloadManifestSha256={academic_sha}\n'
+              f'networkPermission=absent\nremoteWebDependency=absent\n',
+              encoding='utf-8'
+          )
+          print(metadata.read_text(), end='')
+          PY
+
+          rm -rf "$BUILD_DIR"
+          unzip -q "$RELEASE_PAYLOAD_ZIP" -d "$BUILD_DIR"
+          test "$(sha256sum "$BUILD_DIR/app/src/main/assets/index.html" | awk '{print $1}')" = 'f5b8647c24442799a4db0f2edb33ed9ac71d8b7914490b92e31665efe1fb175e'
+          echo 'RELEASE PAYLOAD FREEZE: PASS'
+
       - name: Build patched unsigned release candidate for validation
         working-directory: ${{ env.BUILD_DIR }}
         shell: bash
@@ -217,6 +320,8 @@ jobs:
           if-no-files-found: error
           retention-days: 30
           path: |
+            ${{ env.RELEASE_PAYLOAD_ZIP }}
+            ${{ env.RELEASE_PAYLOAD_METADATA }}
             ${{ env.BUILD_DIR }}/verification/academic-payload-sha256.txt
             ${{ env.BUILD_DIR }}/verification/production-candidate-manifest.xml
             ${{ env.BUILD_DIR }}/verification/production-candidate-badging.txt
@@ -248,13 +353,36 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Verify and extract frozen source archive
+      - name: Download exact validated production payload
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.VALIDATION_ARTIFACT }}
+          path: ${{ runner.temp }}/validated-production-source
+
+      - name: Verify and extract exact validated production payload
         shell: bash
         run: |
           set -euo pipefail
-          echo "$SOURCE_SHA256  $SOURCE_ZIP" | sha256sum -c -
+          PAYLOAD="${RUNNER_TEMP}/validated-production-source/$RELEASE_PAYLOAD_ZIP"
+          META="${RUNNER_TEMP}/validated-production-source/$RELEASE_PAYLOAD_METADATA"
+          test -f "$PAYLOAD" && test -f "$META"
+          PAYLOAD_SHA="$(sha256sum "$PAYLOAD" | awk '{print $1}')"
+          PAYLOAD_SIZE="$(stat -c%s "$PAYLOAD")"
+          grep -Fqx "sha256=$PAYLOAD_SHA" "$META"
+          grep -Fqx "bytes=$PAYLOAD_SIZE" "$META"
+          grep -Fqx 'applicationId=edu.gascnagercoil.environmentalsciences' "$META"
+          grep -Fqx 'versionName=1.3.6' "$META"
+          grep -Fqx 'versionCode=10306' "$META"
+          grep -Fqx 'compileSdk=36' "$META"
+          grep -Fqx 'targetSdk=36' "$META"
+          grep -Fqx 'minSdk=24' "$META"
           test ! -e "$BUILD_DIR"
-          unzip -q "$SOURCE_ZIP" -d "$BUILD_DIR"
+          unzip -q "$PAYLOAD" -d "$BUILD_DIR"
+          echo "RELEASE_PAYLOAD_PATH=$PAYLOAD" >> "$GITHUB_ENV"
+          echo "RELEASE_PAYLOAD_SHA256=$PAYLOAD_SHA" >> "$GITHUB_ENV"
+          echo "RELEASE_PAYLOAD_SIZE=$PAYLOAD_SIZE" >> "$GITHUB_ENV"
+          echo "Validated production payload SHA-256: $PAYLOAD_SHA"
+          echo "Validated production payload bytes: $PAYLOAD_SIZE"
 
       - uses: actions/setup-java@v4
         with:
@@ -280,7 +408,7 @@ jobs:
         with:
           gradle-version: '8.11.1'
 
-      - name: Re-prove frozen academic payload before signing
+      - name: Re-prove frozen academic payload in validated production source
         working-directory: ${{ env.BUILD_DIR }}
         shell: bash
         run: |
@@ -300,12 +428,10 @@ jobs:
               raise SystemExit('FAIL: academic payload manifest hash differs from frozen APK')
           PY
           cmp verification/academic-payload-sha256.txt ../docs/environmental-studies/v1.3.6-academic-payload-sha256.txt
-
-      - name: Apply production-only release-engineering patch
-        shell: bash
-        run: |
-          set -euo pipefail
-          python .release/environmental-studies-v1.3.6/apply_production_patch.py "$BUILD_DIR"
+          grep -Fq "applicationId 'edu.gascnagercoil.environmentalsciences'" app/build.gradle
+          grep -Fq "versionName '1.3.6'" app/build.gradle
+          grep -Fq 'android:allowBackup="false"' app/src/main/AndroidManifest.xml
+          grep -Fq 'android:usesCleartextTraffic="false"' app/src/main/AndroidManifest.xml
 
       - name: Restore permanent release keystore
         shell: bash
@@ -329,6 +455,15 @@ jobs:
         run: |
           set -euo pipefail
           gradle --no-daemon clean :app:lintRelease :app:assembleRelease :app:bundleRelease
+
+      - name: Remove temporary release keystore
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          if [ -n "${ENVSCI_KEYSTORE_PATH:-}" ] && [ -f "$ENVSCI_KEYSTORE_PATH" ]; then
+            shred -u "$ENVSCI_KEYSTORE_PATH" 2>/dev/null || rm -f "$ENVSCI_KEYSTORE_PATH"
+          fi
 
       - name: Verify actual signed APK and AAB
         working-directory: ${{ env.BUILD_DIR }}
@@ -395,6 +530,11 @@ jobs:
           fi
 
           unzip -l "$APK" | grep -Fq 'assets/index.html'
+          unzip -t "$APK" > verification/apk-zip-test.txt
+          unzip -t "$AAB" > verification/aab-zip-test.txt
+          unzip -l "$AAB" | grep -Fq 'base/manifest/AndroidManifest.xml'
+          unzip -l "$AAB" | grep -Fq 'base/assets/index.html'
+          jarsigner -verify -strict "$AAB" > verification/aab-signing.txt 2>&1
 
           python - <<'PY'
           from pathlib import Path
@@ -419,6 +559,115 @@ jobs:
 
           CERT_SUBJECT="$(sed -n 's/^Signer #1 certificate DN: //p' verification/release-signing.txt | head -n1)"
           CERT_SHA256="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' verification/release-signing.txt | head -n1)"
+
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib, json, re, zipfile
+          apk=next(p for p in Path('app/build/outputs/apk/release').glob('*.apk') if 'unsigned' not in p.name)
+          aab=next(Path('app/build/outputs/bundle/release').glob('*.aab'))
+          report={}
+          for label,path in [('apk',apk),('aab',aab)]:
+              with zipfile.ZipFile(path) as z:
+                  names=sorted(n for n in z.namelist() if re.search(r'(?:^|/)classes\d*\.dex          cp "$APK" dist/Environmental-Studies-v1.3.6-release.apk
+          cp "$AAB" dist/Environmental-Studies-v1.3.6-release.aab
+          cp verification/academic-payload-sha256.txt dist/academic-payload-sha256.txt
+          cp verification/release-signing.txt dist/release-signing.txt
+          cp verification/release-manifest.xml dist/release-manifest.xml
+          cp verification/release-badging.txt dist/release-badging.txt
+          cp verification/release-permissions.txt dist/release-permissions.txt
+          cp verification/production-dex-report.json dist/production-dex-report.json
+          cp verification/aab-signing.txt dist/aab-signing.txt
+          cp "$RELEASE_PAYLOAD_PATH" dist/"$RELEASE_PAYLOAD_ZIP"
+
+          APK_SHA="$(sha256sum dist/Environmental-Studies-v1.3.6-release.apk | awk '{print $1}')"
+          AAB_SHA="$(sha256sum dist/Environmental-Studies-v1.3.6-release.aab | awk '{print $1}')"
+          APK_SIZE="$(stat -c%s dist/Environmental-Studies-v1.3.6-release.apk)"
+          AAB_SIZE="$(stat -c%s dist/Environmental-Studies-v1.3.6-release.aab)"
+
+          {
+            echo "Repository: rameshgascngl-create/Zoology-and-Life-Sciences-Digital-Learning-Resources"
+            echo "Production branch: environmental-studies-v1.3.6-production"
+            echo "Source Git commit SHA: $GITHUB_SHA"
+            echo "Workflow: .github/workflows/environmental-studies-v1.3.6-production.yml"
+            echo "GitHub Actions run ID: $GITHUB_RUN_ID"
+            echo "Frozen beta source ZIP: $SOURCE_ZIP"
+            echo "Frozen beta source ZIP SHA-256: $SOURCE_SHA256"
+            echo "Production release payload ZIP: $RELEASE_PAYLOAD_ZIP"
+            echo "Production release payload bytes: $RELEASE_PAYLOAD_SIZE"
+            echo "Production release payload SHA-256: $RELEASE_PAYLOAD_SHA256"
+            echo "Audited beta APK SHA-256: $FROZEN_APK_SHA256"
+            echo "Academic payload manifest SHA-256: $ACADEMIC_MANIFEST_SHA256"
+            echo 'Academic payload integrity: PASS'
+            echo 'APK filename: Environmental-Studies-v1.3.6-release.apk'
+            echo "APK size: $APK_SIZE bytes"
+            echo "APK SHA-256: $APK_SHA"
+            echo 'AAB filename: Environmental-Studies-v1.3.6-release.aab'
+            echo "AAB size: $AAB_SIZE bytes"
+            echo "AAB SHA-256: $AAB_SHA"
+            echo "applicationId: $APP_ID"
+            echo "versionName: $VERSION_NAME"
+            echo "versionCode: $VERSION_CODE"
+            echo "minSdk: $MIN_SDK"
+            echo "targetSdk: $TARGET_SDK"
+            echo 'compileSdk: 36'
+            echo 'debuggable: false'
+            echo 'Compilation/build type: release'
+            echo 'WebView debugging: false (source hard-codes false)'
+            echo "Signing certificate Subject/DN: $CERT_SUBJECT"
+            echo "Signing certificate SHA-256: $CERT_SHA256"
+            echo 'APK Signature Scheme v2: true'
+            echo 'APK Signature Scheme v3: true'
+            echo 'AAB JAR signing verification: PASS'
+            echo 'APK DEX inspection: PASS'
+            echo 'AAB DEX inspection: PASS'
+            echo 'INTERNET permission: absent'
+            echo 'Dangerous permissions: none declared'
+            echo 'allowBackup: false'
+            echo 'usesCleartextTraffic: false'
+            echo 'dataExtractionRules: inactive/absent from merged manifest'
+            echo 'fullBackupContent: inactive/absent from merged manifest'
+            echo 'assets/index.html present: yes'
+            echo 'Embedded/catalog version: 1.3.6'
+            echo 'Visible UI version: v1.3.6'
+            echo 'CLEAN RELEASE BUILD: PASS'
+            echo 'VERSION CONSISTENCY: PASS'
+            echo 'RELEASE SIGNING: PASS'
+            echo 'OFFLINE PAYLOAD: PASS'
+            echo 'ACADEMIC PAYLOAD INTEGRITY: PASS'
+            echo 'STATIC APK AUDIT: PASS'
+            echo 'DEVICE QA: NOT PERFORMED'
+          } > dist/release-evidence.txt
+          cat dist/release-evidence.txt
+
+      - name: Upload signed production release
+        uses: actions/upload-artifact@v4
+        with:
+          name: Environmental-Studies-v1.3.6-SIGNED-RELEASE
+          if-no-files-found: error
+          retention-days: 30
+          path: |
+            ${{ env.BUILD_DIR }}/dist/Environmental-Studies-v1.3.6-release.apk
+            ${{ env.BUILD_DIR }}/dist/Environmental-Studies-v1.3.6-release.aab
+            ${{ env.BUILD_DIR }}/dist/release-evidence.txt
+            ${{ env.BUILD_DIR }}/dist/academic-payload-sha256.txt
+            ${{ env.BUILD_DIR }}/dist/release-signing.txt
+            ${{ env.BUILD_DIR }}/dist/release-manifest.xml
+            ${{ env.BUILD_DIR }}/dist/release-badging.txt
+            ${{ env.BUILD_DIR }}/dist/release-permissions.txt
+            ${{ env.BUILD_DIR }}/dist/production-dex-report.json
+            ${{ env.BUILD_DIR }}/dist/aab-signing.txt
+            ${{ env.BUILD_DIR }}/dist/Environmental-Studies-Android-v1.3.6-RELEASE-PAYLOAD.zip
+,n))
+                  if not names:
+                      raise SystemExit(f'FAIL: no DEX payload found in {label}')
+                  entries=[]
+                  for name in names:
+                      data=z.read(name)
+                      entries.append({'name':name,'bytes':len(data),'sha256':hashlib.sha256(data).hexdigest()})
+                  report[label]={'file':path.name,'dex_count':len(entries),'entries':entries}
+          Path('verification/production-dex-report.json').write_text(json.dumps(report,indent=2)+'\n')
+          print('DEX inspection:', {k:v['dex_count'] for k,v in report.items()})
+          PY
 
           mkdir -p dist
           cp "$APK" dist/Environmental-Studies-v1.3.6-release.apk
