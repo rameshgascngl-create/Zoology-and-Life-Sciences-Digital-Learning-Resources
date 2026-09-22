@@ -135,7 +135,7 @@ jobs:
 
           "$AAPT2" dump badging "$APK" | tee release-badging.txt
           grep -q "package: name='com.tnfisheries.ornamentalfish' versionCode='244' versionName='2.4.4'" release-badging.txt
-          grep -q "sdkVersion:'24'" release-badging.txt
+          grep -q "minSdkVersion:'24'" release-badging.txt
           grep -q "targetSdkVersion:'36'" release-badging.txt
           if grep -q "uses-permission: name='android.permission.INTERNET'" release-badging.txt; then
             echo "::error::Unexpected INTERNET permission"
