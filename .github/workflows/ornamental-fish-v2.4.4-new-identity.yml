@@ -20,6 +20,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: release/ornamental-fish-v2.4.4-new-identity
 
       - name: Verify exact source archive
         shell: bash
