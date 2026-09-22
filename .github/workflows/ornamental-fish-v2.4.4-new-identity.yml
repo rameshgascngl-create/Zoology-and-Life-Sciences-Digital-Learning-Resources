@@ -1,0 +1,175 @@
+name: Ornamental Fish v2.4.4 New Identity Production Release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  SOURCE_ZIP: OrnamentalFish-v2.4.4-NEW-STORE-SOURCE.zip
+  SOURCE_SHA256: 37EC0B1F553D19F518ADA3C2F58D328BDE6C72541E97BBFB46E31D1FBB7580EF
+  EXPECTED_CERT_SHA256: 59F5D6ECBFED41958CA04DA3E23E5CE9ADA98814D5023B053336C39F0D21F51B
+  BUILD_TOOLS_VERSION: '36.0.0'
+  BUILD_DIR: build-v244-new-identity
+
+jobs:
+  signed-release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify exact source archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f "$SOURCE_ZIP" || {
+            echo "::error::Missing $SOURCE_ZIP at repository root"
+            exit 1
+          }
+          echo "$SOURCE_SHA256  $SOURCE_ZIP" | sha256sum -c -
+          if unzip -Z1 "$SOURCE_ZIP" | grep -Eiq '\.(jks|keystore|p12|pfx)$'; then
+            echo "::error::Private signing material must not be committed inside the source ZIP"
+            exit 1
+          fi
+          rm -rf "$BUILD_DIR"
+          mkdir -p "$BUILD_DIR"
+          unzip -q "$SOURCE_ZIP" -d "$BUILD_DIR"
+
+      - name: Verify new identity and frozen academic payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q "applicationId 'com.tnfisheries.ornamentalfish'" "$BUILD_DIR/app/build.gradle"
+          grep -q "namespace 'com.tnfisheries.ornamentalfish'" "$BUILD_DIR/app/build.gradle"
+          grep -q "versionCode 244" "$BUILD_DIR/app/build.gradle"
+          grep -q "versionName '2.4.4'" "$BUILD_DIR/app/build.gradle"
+          grep -q "targetSdk 36" "$BUILD_DIR/app/build.gradle"
+          grep -q '^package com.tnfisheries.ornamentalfish;' "$BUILD_DIR/app/src/main/java/com/tnfisheries/ornamentalfish/MainActivity.java"
+          ! grep -Rqs "android.permission.INTERNET" "$BUILD_DIR/app/src/main/AndroidManifest.xml"
+          test -f "$BUILD_DIR/app/src/main/assets/privacy-policy.html"
+          grep -q 'privacy-policy-v2.html' "$BUILD_DIR/app/src/main/assets/privacy-policy.html"
+          grep -q 'com.tnfisheries.ornamentalfish' "$BUILD_DIR/app/src/main/assets/privacy-policy.html"
+          (
+            cd "$BUILD_DIR/app/src/main"
+            sha256sum -c ../../../release-evidence/ACADEMIC_PAYLOAD_SHA256_v2.4.3.txt
+          )
+          echo "SOURCE / ACADEMIC PAYLOAD GATE: PASS"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
+
+      - name: Install Android 36 build tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdkmanager 'platforms;android-36' "build-tools;$BUILD_TOOLS_VERSION"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+
+      - name: Restore permanent Ornamentalfish keystore
+        shell: bash
+        env:
+          OFISH_KEYSTORE_BASE64: ${{ secrets.OFISH_KEYSTORE_BASE64 }}
+          OFISH_KEYSTORE_PASSWORD: ${{ secrets.OFISH_KEYSTORE_PASSWORD }}
+          OFISH_KEY_ALIAS: ${{ secrets.OFISH_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          test -n "${OFISH_KEYSTORE_BASE64:-}" || { echo "::error::Missing OFISH_KEYSTORE_BASE64"; exit 1; }
+          test -n "${OFISH_KEYSTORE_PASSWORD:-}" || { echo "::error::Missing OFISH_KEYSTORE_PASSWORD"; exit 1; }
+          test "$OFISH_KEY_ALIAS" = 'ornamentalfish' || { echo "::error::OFISH_KEY_ALIAS must be ornamentalfish"; exit 1; }
+          printf '%s' "$OFISH_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/ornamental-fish-release.jks"
+          chmod 600 "$RUNNER_TEMP/ornamental-fish-release.jks"
+
+          keytool -list -v             -keystore "$RUNNER_TEMP/ornamental-fish-release.jks"             -storepass "$OFISH_KEYSTORE_PASSWORD"             -alias "$OFISH_KEY_ALIAS" > "$RUNNER_TEMP/keystore-certificate.txt"
+
+          CERT=$(sed -n 's/^[[:space:]]*SHA256: //p' "$RUNNER_TEMP/keystore-certificate.txt" | tr -d ':' | tr '[:lower:]' '[:upper:]' | head -1)
+          test "$CERT" = "$EXPECTED_CERT_SHA256" || {
+            echo "::error::Wrong permanent keystore certificate: $CERT"
+            exit 1
+          }
+          echo "KEYSTORE IDENTITY GATE: PASS"
+
+      - name: Build signed release
+        working-directory: ${{ env.BUILD_DIR }}
+        shell: bash
+        env:
+          OFISH_KEYSTORE_FILE: ${{ runner.temp }}/ornamental-fish-release.jks
+          OFISH_KEYSTORE_PASSWORD: ${{ secrets.OFISH_KEYSTORE_PASSWORD }}
+          OFISH_KEY_ALIAS: ${{ secrets.OFISH_KEY_ALIAS }}
+          OFISH_KEY_PASSWORD: ${{ secrets.OFISH_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "${OFISH_KEY_PASSWORD:-}" || { echo "::error::Missing OFISH_KEY_PASSWORD"; exit 1; }
+          gradle --no-daemon clean :app:assembleRelease
+
+      - name: Verify final APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$BUILD_DIR/app/build/outputs/apk/release/app-release.apk"
+          APKSIGNER="$ANDROID_HOME/build-tools/$BUILD_TOOLS_VERSION/apksigner"
+          AAPT2="$ANDROID_HOME/build-tools/$BUILD_TOOLS_VERSION/aapt2"
+
+          test -f "$APK"
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee release-signing.txt
+
+          CERT=$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' release-signing.txt | tr -d ':' | tr '[:lower:]' '[:upper:]' | head -1)
+          test "$CERT" = "$EXPECTED_CERT_SHA256" || {
+            echo "::error::FINAL SIGNING IDENTITY FAIL: $CERT"
+            exit 1
+          }
+
+          "$AAPT2" dump badging "$APK" | tee release-badging.txt
+          grep -q "package: name='com.tnfisheries.ornamentalfish' versionCode='244' versionName='2.4.4'" release-badging.txt
+          grep -q "sdkVersion:'24'" release-badging.txt
+          grep -q "targetSdkVersion:'36'" release-badging.txt
+          if grep -q "uses-permission: name='android.permission.INTERNET'" release-badging.txt; then
+            echo "::error::Unexpected INTERNET permission"
+            exit 1
+          fi
+
+          unzip -l "$APK" | tee release-apk-contents.txt
+          grep -q 'assets/privacy-policy.html' release-apk-contents.txt
+          grep -q 'assets/data/species.json' release-apk-contents.txt
+          grep -q 'assets/data/book.json' release-apk-contents.txt
+          grep -q 'assets/data/quiz.json' release-apk-contents.txt
+          grep -q 'assets/data/labs.json' release-apk-contents.txt
+
+          cp "$APK" OrnamentalFish-v2.4.4-NEW-STORE-READY.apk
+          sha256sum OrnamentalFish-v2.4.4-NEW-STORE-READY.apk | tee release-sha256.txt
+
+          {
+            echo "applicationId=com.tnfisheries.ornamentalfish"
+            echo "versionName=2.4.4"
+            echo "versionCode=244"
+            echo "certificateSHA256=$EXPECTED_CERT_SHA256"
+            echo "privacyPolicy=https://rameshgascngl-create.github.io/Zoology-and-Life-Sciences-Digital-Learning-Resources/ornamental-fish-science/privacy-policy-v2.html"
+            echo "submissionType=NEW INDUS APP LISTING"
+          } > release-gate-summary.txt
+
+          echo "PRODUCTION RELEASE GATE: PASS"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: OrnamentalFish-v2.4.4-NEW-STORE-READY
+          path: |
+            OrnamentalFish-v2.4.4-NEW-STORE-READY.apk
+            release-signing.txt
+            release-badging.txt
+            release-apk-contents.txt
+            release-sha256.txt
+            release-gate-summary.txt
+          if-no-files-found: error
+          retention-days: 30
