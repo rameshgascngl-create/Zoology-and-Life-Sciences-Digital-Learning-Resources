@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#0f766e">
+  <title>Published Android Apps | Department of Zoology</title>
+  <style>
+    :root{--bg:#f6f8fb;--card:#fff;--ink:#172033;--muted:#667085;--line:#e5e7eb;--brand:#0f766e;--brand2:#115e59;--ok:#15803d}
+    *{box-sizing:border-box}
+    body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:linear-gradient(180deg,#ecfdf5 0,#f6f8fb 230px);color:var(--ink)}
+    .wrap{max-width:980px;margin:auto;padding:32px 18px 56px}
+    .hero{background:linear-gradient(135deg,#0f766e,#164e63);color:#fff;border-radius:24px;padding:30px;box-shadow:0 16px 40px rgba(15,118,110,.18)}
+    .eyebrow{font-size:13px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;opacity:.88}
+    h1{margin:8px 0 8px;font-size:clamp(30px,5vw,48px);line-height:1.05}
+    .sub{margin:0;max-width:720px;font-size:16px;line-height:1.55;opacity:.94}
+    .sharebar{display:flex;gap:10px;flex-wrap:wrap;margin-top:20px}
+    button{appearance:none;border:0;border-radius:12px;padding:11px 16px;font-weight:700;cursor:pointer}
+    .primary{background:#fff;color:#0f766e}.ghost{background:rgba(255,255,255,.14);color:#fff;border:1px solid rgba(255,255,255,.3)}
+    .summary{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:20px 0 0}
+    .metric{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.17);border-radius:14px;padding:14px}
+    .metric b{display:block;font-size:24px}.metric span{font-size:12px;opacity:.88}
+    .apps{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-top:22px}
+    .card{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:20px;box-shadow:0 8px 24px rgba(16,24,40,.06)}
+    .top{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}
+    .icon{width:52px;height:52px;border-radius:15px;background:linear-gradient(135deg,#d1fae5,#ccfbf1);display:grid;place-items:center;font-size:25px;flex:0 0 auto}
+    .apphead{display:flex;gap:14px;align-items:flex-start}
+    .name{font-size:19px;font-weight:800;line-height:1.25;margin:1px 0 5px}
+    .pkg{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12px;color:var(--muted);word-break:break-all}
+    .badge{color:#166534;background:#dcfce7;border:1px solid #bbf7d0;padding:6px 9px;border-radius:999px;font-size:12px;font-weight:800;white-space:nowrap}
+    .meta{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-top:18px;padding-top:15px;border-top:1px solid var(--line)}
+    .meta div{min-width:0}.label{display:block;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px}.value{font-weight:750;font-size:14px}
+    .footer{margin-top:28px;padding:18px 4px 0;color:var(--muted);font-size:13px;line-height:1.55;text-align:center}
+    .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#111827;color:#fff;border-radius:999px;padding:10px 15px;font-size:13px;opacity:0;pointer-events:none;transition:.2s}
+    .toast.show{opacity:1}
+    @media(max-width:720px){.apps{grid-template-columns:1fr}.summary{grid-template-columns:1fr 1fr 1fr}.hero{padding:24px}.meta{grid-template-columns:1fr 1fr 1fr}}
+    @media(max-width:460px){.summary{grid-template-columns:1fr}.meta{grid-template-columns:1fr 1fr}.badge{margin-left:auto}}
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <section class="hero">
+      <div class="eyebrow">Published Android Applications</div>
+      <h1>Zoology & Life Sciences Apps</h1>
+      <p class="sub">A public showcase of published educational and academic Android applications developed for teaching, learning and faculty use.</p>
+      <div class="sharebar">
+        <button class="primary" onclick="sharePage()">Share this page</button>
+        <button class="ghost" onclick="copyLink()">Copy link</button>
+      </div>
+      <div class="summary">
+        <div class="metric"><b>4</b><span>Published apps</span></div>
+        <div class="metric"><b>4</b><span>Unique Android packages</span></div>
+        <div class="metric"><b>2026</b><span>Current publication year</span></div>
+      </div>
+    </section>
+
+    <section class="apps" aria-label="Published applications">
+      <article class="card">
+        <div class="top">
+          <div class="apphead"><div class="icon">🪳</div><div><div class="name">CockroachLab</div><div class="pkg">in.gov.tn.gascngl.zoology.cockroachlab</div></div></div>
+          <span class="badge">Published</span>
+        </div>
+        <div class="meta">
+          <div><span class="label">Version</span><span class="value">2.1.4</span></div>
+          <div><span class="label">Updated</span><span class="value">21 Sep 2026</span></div>
+          <div><span class="label">Installs</span><span class="value">1</span></div>
+        </div>
+      </article>
+
+      <article class="card">
+        <div class="top">
+          <div class="apphead"><div class="icon">🪱</div><div><div class="name">Earthworm Virtual Laboratory</div><div class="pkg">in.ramesh.zoology.earthwormlab</div></div></div>
+          <span class="badge">Published</span>
+        </div>
+        <div class="meta">
+          <div><span class="label">Version</span><span class="value">1.3.9</span></div>
+          <div><span class="label">Updated</span><span class="value">29 Sep 2026</span></div>
+          <div><span class="label">Installs</span><span class="value">0</span></div>
+        </div>
+      </article>
+
+      <article class="card">
+        <div class="top">
+          <div class="apphead"><div class="icon">📋</div><div><div class="name">VARUGAI – Faculty Attendance Register</div><div class="pkg">com.gasczoology.varugai</div></div></div>
+          <span class="badge">Published</span>
+        </div>
+        <div class="meta">
+          <div><span class="label">Version</span><span class="value">16.0.4</span></div>
+          <div><span class="label">Updated</span><span class="value">1 Oct 2026</span></div>
+          <div><span class="label">Installs</span><span class="value">0</span></div>
+        </div>
+      </article>
+
+      <article class="card">
+        <div class="top">
+          <div class="apphead"><div class="icon">🐠</div><div><div class="name">Ornamental Fish Science</div><div class="pkg">com.tnfisheries.ornamentalfish</div></div></div>
+          <span class="badge">Published</span>
+        </div>
+        <div class="meta">
+          <div><span class="label">Version</span><span class="value">3.0.0</span></div>
+          <div><span class="label">Updated</span><span class="value">1 Oct 2026</span></div>
+          <div><span class="label">Installs</span><span class="value">0</span></div>
+        </div>
+      </article>
+    </section>
+
+    <footer class="footer">
+      Department of Zoology · Government Arts and Science College, Nagercoil<br>
+      Package identifiers and publication details shown as supplied by the developer dashboard.
+    </footer>
+  </main>
+  <div class="toast" id="toast">Link copied</div>
+  <script>
+    function copied(){const t=document.getElementById('toast');t.classList.add('show');setTimeout(()=>t.classList.remove('show'),1600)}
+    async function copyLink(){await navigator.clipboard.writeText(location.href);copied()}
+    async function sharePage(){
+      const data={title:'Published Zoology & Life Sciences Apps',text:'Published Android applications from the Department of Zoology.',url:location.href};
+      if(navigator.share){try{await navigator.share(data)}catch(e){}} else {copyLink()}
+    }
+  </script>
+</body>
+</html>
