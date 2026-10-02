@@ -1,0 +1,38 @@
+name: Verify Environmental Studies Privacy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/environmental-studies/privacy-policy.html"
+      - ".github/workflows/verify-environmental-studies-privacy.yml"
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Verify published privacy policy
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL="https://rameshgascngl-create.github.io/Zoology-and-Life-Sciences-Digital-Learning-Resources/docs/environmental-studies/privacy-policy.html"
+          for attempt in $(seq 1 18); do
+            BODY="$(mktemp)"
+            HTTP_CODE="$(curl -LsS --retry 2 --retry-delay 2 -o "$BODY" -w '%{http_code}' "$URL" || true)"
+            TITLE=false
+            VERSION=false
+            grep -Fq "Environmental Studies" "$BODY" && TITLE=true || true
+            grep -Fq "1.1 · 1 October 2026" "$BODY" && VERSION=true || true
+            echo "attempt=$attempt http_status=$HTTP_CODE environmental_studies=$TITLE policy_version=$VERSION"
+            if [ "$HTTP_CODE" = "200" ] && [ "$TITLE" = "true" ] && [ "$VERSION" = "true" ]; then
+              echo "privacy_url=$URL"
+              echo "privacy_http_200=PASS"
+              echo "privacy_environmental_studies=PASS"
+              echo "privacy_policy_version=PASS"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "Published privacy policy verification failed." >&2
+          exit 1
